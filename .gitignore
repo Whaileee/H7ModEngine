@@ -1,0 +1,8 @@
+# Build output
+/bin/
+/build/
+
+# Reverse-engineering artifacts: game binary dumps (Ubisoft's code, ~100 MB) and the Ghidra project
+/re/dump/
+/re/ghidra_proj/
+/re/*.log
