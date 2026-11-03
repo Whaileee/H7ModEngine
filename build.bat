@@ -3,9 +3,17 @@ rem Builds bin\dinput8.dll with MSVC (x64). Usage: build.bat [deploy]
 setlocal
 set ROOT=%~dp0
 set GAME=N:\Ubisoft\games\Might and Magic Heroes VII
-set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-if not exist %VCVARS% set VCVARS="C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-call %VCVARS% >nul || exit /b 1
+rem Find any Visual Studio edition with the C++ x64 tools (Community, BuildTools, Enterprise on CI runners).
+rem (%%VSWHERE%% expands inside the child command: the ")" of "Program Files (x86)" would end the for clause.)
+set VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe
+set VSDIR=
+for /f "usebackq delims=" %%i in (`call "%%VSWHERE%%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSDIR=%%i
+echo Using Visual Studio at %VSDIR%
+if not defined VSDIR (
+  echo Visual Studio with the C++ x64 build tools was not found.
+  exit /b 1
+)
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
 if not exist "%ROOT%build\obj" mkdir "%ROOT%build\obj"
 if not exist "%ROOT%bin" mkdir "%ROOT%bin"
