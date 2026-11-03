@@ -17,8 +17,8 @@ Game workspace reference: `N:\Ubisoft\games\Might and Magic Heroes VII\H7_REFERE
 | `dist\H7ModEngine.ini`, `dist\mods\` | Default config; example mods HelloWorld (enabled) + DailyGold, CombatXP, DamageScale, HeroMovement (shipped `enabled = false`; `deploy` overwrites the game copies, so re-enable them there for testing) |
 | `docs\API.md` | Modder reference (written 2026-11-03 from the source + verified behaviour) |
 | `tests\*.lua` | In-game scripts: copy into `<Game>\H7ModEngine\exec\` while the game runs. `selftest` (API), `hooktest` (block/override/args/script→script), `sigdump` (signatures), `daytrace` (call-count tracer for ~117 combat/calendar functions) |
-| `third_party\lua` | Lua 5.4.7 (compiled as C++ so errors unwind as exceptions) |
-| `re\dump\` | Unpacked game image dump + early names/objects dumps |
+| `third_party\lua` | Lua 5.4.7: git submodule of github.com/lua/lua pinned at tag v5.4.7 (`git submodule update --init` after cloning); compiled as C++ so errors unwind as exceptions |
+| `re\dump\` | Unpacked game image dump + early names/objects dumps (git-ignored, like `bin\`, `build\` and `re\ghidra_proj\`) |
 | `re\ghidra_proj\` | Ghidra project (headless analysis of the dump was started in background; may be complete) |
 | `<Game>\H7ModEngine\` | Runtime root: `logs\engine.log`, `mods\`, `exec\`, `data\`, `lib\`, `dumps\` |
 
