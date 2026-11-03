@@ -200,6 +200,23 @@ static void WriteElem(lua_State* L, int idx, uintptr_t addr, UObject prop, PropK
         }
         break;
     }
+    case PropKind::Delegate: {
+        // {object = obj, func = "FunctionName"} (or nil to clear): an FScriptDelegate {UObject*, FName}.
+        struct { UObject object; ue3::FName func; } d{0, {0, 0}};
+        if (!lua_isnil(L, idx)) {
+            luaL_checktype(L, idx, LUA_TTABLE);
+            lua_getfield(L, idx, "object");
+            d.object = ToObject(L, -1);
+            lua_getfield(L, idx, "func");
+            const char* fn = luaL_checkstring(L, -1);
+            if (!d.object || !LookupField(ue3::ObjClass(d.object), fn))
+                luaL_error(L, "delegate target has no function '%s'", fn);
+            d.func = {ue3::FindNameIndex(fn), 0};
+            lua_pop(L, 2);
+        }
+        mem::Write((void*)addr, &d, sizeof(d));
+        break;
+    }
     default: luaL_error(L, "assigning %s properties is not supported", ue3::ObjName(ue3::ObjClass(prop)).c_str());
     }
 }

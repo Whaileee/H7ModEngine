@@ -34,8 +34,12 @@ struct Mod {
     std::string version;
     std::string author;
     std::string description;
+    std::string category;       // manifest `category`: groups mods in the Mods menu
     std::vector<std::string> loadAfter;
     fs::path dir;
+    bool defaultEnabled = true; // manifest `enabled`
+    bool enabled = true;        // after the ini's [Mods] Enabled/Disabled lists
+    bool hidden = false;        // manifest `hidden`: left out of mod lists shown to players
     int envRef = LUA_NOREF;
     bool loaded = false;
     long long stamp = 0; // newest .lua write time, for hot reload
@@ -184,9 +188,10 @@ static long long NewestLuaStamp(const fs::path& dir) {
     return newest;
 }
 
-static std::vector<std::string> DisabledMods() {
+// [Mods] Enabled= / Disabled= in H7ModEngine.ini: comma-separated mod names that override the manifest's `enabled`.
+static std::vector<std::string> ModList(const wchar_t* key) {
     wchar_t buf[2048] = {};
-    GetPrivateProfileStringW(L"Mods", L"Disabled", L"", buf, 2048, EnginePath(L"H7ModEngine.ini").c_str());
+    GetPrivateProfileStringW(L"Mods", key, L"", buf, 2048, EnginePath(L"H7ModEngine.ini").c_str());
     std::vector<std::string> out;
     std::string s = Narrow(buf), cur;
     for (char c : s + ",") {
@@ -201,6 +206,23 @@ static std::vector<std::string> DisabledMods() {
     return out;
 }
 
+static void WriteModList(const wchar_t* key, const std::vector<std::string>& names) {
+    std::string s;
+    for (auto& n : names) s += (s.empty() ? "" : ", ") + n;
+    WritePrivateProfileStringW(L"Mods", key, Widen(s).c_str(), EnginePath(L"H7ModEngine.ini").c_str());
+}
+
+static bool Contains(const std::vector<std::string>& v, const std::string& s) {
+    return std::find(v.begin(), v.end(), s) != v.end();
+}
+
+static bool EffectiveEnabled(const Mod& m, const std::vector<std::string>& enabled,
+                             const std::vector<std::string>& disabled) {
+    if (Contains(disabled, m.name)) return false;
+    if (Contains(enabled, m.name)) return true;
+    return m.defaultEnabled;
+}
+
 static std::string TableString(lua_State* L, int idx, const char* key, const std::string& fallback) {
     lua_getfield(L, idx, key);
     std::string v = lua_isstring(L, -1) ? lua_tostring(L, -1) : fallback;
@@ -208,7 +230,7 @@ static std::string TableString(lua_State* L, int idx, const char* key, const std
     return v;
 }
 
-// Reads mods/<dir>/mod.lua (optional manifest returning a table).
+// Reads mods/<dir>/mod.lua (optional manifest returning a table). False if the manifest fails to run.
 static bool ReadManifest(Mod& m) {
     fs::path manifest = m.dir / "mod.lua";
     m.name = m.dir.filename().string();
@@ -224,6 +246,7 @@ static bool ReadManifest(Mod& m) {
         m.version = TableString(L, -1, "version", "");
         m.author = TableString(L, -1, "author", "");
         m.description = TableString(L, -1, "description", "");
+        m.category = TableString(L, -1, "category", "");
         lua_getfield(L, -1, "load_after");
         if (lua_istable(L, -1)) {
             for (int i = 1; lua_rawgeti(L, -1, i) == LUA_TSTRING; ++i) {
@@ -234,10 +257,12 @@ static bool ReadManifest(Mod& m) {
         }
         lua_pop(L, 1);
         lua_getfield(L, -1, "enabled");
-        bool enabled = lua_isnil(L, -1) || lua_toboolean(L, -1);
+        m.defaultEnabled = lua_isnil(L, -1) || lua_toboolean(L, -1);
         lua_pop(L, 1);
+        lua_getfield(L, -1, "hidden");
+        m.hidden = lua_toboolean(L, -1);
         lua_settop(L, 0);
-        return enabled;
+        return true;
     }
     lua_settop(L, 0);
     return true;
@@ -414,9 +439,10 @@ static void LoadMod(Mod& m) {
     lua_settop(L, 0);
 }
 
+// Every mod folder is listed (h7.mods), but only enabled mods load.
 static void DiscoverAndLoadMods() {
     g_mods.clear();
-    std::vector<std::string> disabled = DisabledMods();
+    std::vector<std::string> enabled = ModList(L"Enabled"), disabled = ModList(L"Disabled");
     std::error_code ec;
     int nextId = 1;
     std::vector<Mod> found;
@@ -426,10 +452,8 @@ static void DiscoverAndLoadMods() {
         m.id = nextId++;
         m.dir = e.path();
         if (!ReadManifest(m)) continue;
-        if (std::find(disabled.begin(), disabled.end(), m.name) != disabled.end()) {
-            Log("Mod %s is disabled", m.name.c_str());
-            continue;
-        }
+        m.enabled = EffectiveEnabled(m, enabled, disabled);
+        if (!m.enabled) Log("Mod %s is disabled", m.name.c_str());
         found.push_back(std::move(m));
     }
     std::sort(found.begin(), found.end(), [](auto& a, auto& b) { return _stricmp(a.name.c_str(), b.name.c_str()) < 0; });
@@ -454,9 +478,44 @@ static void DiscoverAndLoadMods() {
         }
     }
     g_mods = std::move(ordered);
-    for (auto& m : g_mods) LoadMod(m);
-    lua_pushinteger(g_L, (lua_Integer)g_mods.size());
+    int loaded = 0;
+    for (auto& m : g_mods)
+        if (m.enabled) LoadMod(m), ++loaded;
+    lua_pushinteger(g_L, loaded);
     EmitEvent("mods_loaded", 1);
+}
+
+// h7.set_mod_enabled(name, enabled): remembered in the ini; the mod loads or unloads on the next frame
+// (never inside the caller, which may be the mod itself).
+static bool g_toggled = false;
+static int H_set_mod_enabled(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    bool on = lua_toboolean(L, 2);
+    auto it = std::find_if(g_mods.begin(), g_mods.end(), [&](auto& m) { return m.name == name; });
+    if (it == g_mods.end()) return luaL_error(L, "unknown mod '%s'", name);
+    std::vector<std::string> enabled = ModList(L"Enabled"), disabled = ModList(L"Disabled");
+    std::erase(enabled, it->name);
+    std::erase(disabled, it->name);
+    if (on != it->defaultEnabled) (on ? enabled : disabled).push_back(it->name);
+    WriteModList(L"Enabled", enabled);
+    WriteModList(L"Disabled", disabled);
+    it->enabled = on;
+    g_toggled = true;
+    return 0;
+}
+
+static void ApplyToggles() {
+    for (auto& m : g_mods) {
+        if (m.enabled == m.loaded) continue;
+        if (m.enabled) {
+            LoadMod(m);
+        } else {
+            UnloadMod(m);
+        }
+        lua_pushstring(g_L, m.name.c_str());
+        lua_pushboolean(g_L, m.enabled);
+        EmitEvent("mod_toggled", 2);
+    }
 }
 
 static bool g_reloadAll = false;
@@ -469,11 +528,15 @@ static int H_mods(lua_State* L) {
     lua_newtable(L);
     int i = 0;
     for (auto& m : g_mods) {
-        lua_createtable(L, 0, 4);
+        lua_createtable(L, 0, 7);
         lua_pushstring(L, m.name.c_str()); lua_setfield(L, -2, "name");
         lua_pushstring(L, m.version.c_str()); lua_setfield(L, -2, "version");
         lua_pushstring(L, m.author.c_str()); lua_setfield(L, -2, "author");
+        lua_pushstring(L, m.description.c_str()); lua_setfield(L, -2, "description");
+        lua_pushstring(L, m.category.c_str()); lua_setfield(L, -2, "category");
+        lua_pushboolean(L, m.enabled); lua_setfield(L, -2, "enabled");
         lua_pushboolean(L, m.loaded); lua_setfield(L, -2, "loaded");
+        lua_pushboolean(L, m.hidden); lua_setfield(L, -2, "hidden");
         lua_rawseti(L, -2, ++i);
     }
     return 1;
@@ -530,7 +593,7 @@ static void CreateState() {
     lua_setfield(g_L, -2, "version");
     const luaL_Reg fns[] = {
         {"on", H_on}, {"off", H_off}, {"after", H_after}, {"every", H_every}, {"cancel", H_cancel},
-        {"reload", H_reload}, {"mods", H_mods}, {nullptr, nullptr},
+        {"reload", H_reload}, {"mods", H_mods}, {"set_mod_enabled", H_set_mod_enabled}, {nullptr, nullptr},
     };
     luaL_setfuncs(g_L, fns, 0);
     lua_setglobal(g_L, "h7");
@@ -597,6 +660,11 @@ void OnGameTick(float dt, uintptr_t viewport) {
             EmitEvent("map_loaded", 1);
         }
         RunExecFolder();
+    }
+
+    if (g_toggled) {
+        g_toggled = false;
+        ApplyToggles();
     }
 
     if (g_reloadAll) {

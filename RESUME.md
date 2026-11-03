@@ -1,4 +1,7 @@
-# H7ModEngine — resume notes (saved 2026-11-03 ~19:45)
+# H7ModEngine — resume notes (saved 2026-11-04 ~00:20)
+
+**Current work: the in-game Mods menu, branch `feature/mods-menu` (uncommitted)** — see
+[Mods menu](#mods-menu-feature-branch-in-progress) below for the state and the next steps.
 
 Goal: a Lua 5.4 modding engine for Might & Magic Heroes VII (UE3, build v2.2.1) that exposes an easy API
 to the community. Loaded as a `dinput8.dll` proxy; no game code is patched.
@@ -148,6 +151,75 @@ Next steps:
 
 Open risks: natives with iNative called through ProcessEvent (SDK trick: clear iNative); hooks on native
 functions get no params and can't block; protector integrity checks (none hit so far — we only touch heap data).
+
+## Mods menu (feature branch, in progress)
+
+User request: when the engine is on, a main menu entry **Mods** lists every mod with its description and lets
+players enable/disable it. The user wants it to look like the game's **map selection screen** (table on the left,
+details on the right, Back/Continue buttons), not a small popup.
+
+Uncommitted on `feature/mods-menu` (engine built + deployed 2026-11-04 00:20, game closed):
+- Engine (`runtime.cpp`): mod state — manifest `enabled`/`hidden`/`category`; ini `[Mods] Enabled=`/`Disabled=`
+  override the manifest; `h7.set_mod_enabled(name, on)` writes the ini, the mod loads/unloads on the next frame and
+  `mod_toggled(name, enabled)` fires; `h7.mods()` returns name/version/author/description/category/enabled/loaded/
+  hidden. Disabled mods are still discovered (listed) but not loaded. `category` is new and **not yet run in game**.
+- Engine (`bindings.cpp`): delegate params accept `{object=, func=}` (FScriptDelegate {UObject*, FName}).
+- Example mods got `category` (Combat/Economy/Adventure/Example). `docs/API.md` documents all of the above except
+  `category` (add it to the manifest example + `h7.mods()` row).
+- `dist/mods/ModManager/` (`hidden = true`): **rewritten for the map selection window, not yet tested** (the game
+  closed before it hot-reloaded). The previous popup version (custom-difficulty popup, paged) worked; it is only
+  in the session history.
+- `tests/swfdump.lua` (dumps SwfMovie.RawData to `dumps\swf\`), `tests/menulab.lua` (main menu button),
+  `tests/modlistlab.lua` (fills the map selection window with mods via exec — verified with a screenshot).
+- `re/swfinfo.py <file.swf> [--strings]`: lists a SWF/GFX movie's tags, symbols and AS3 classes with members.
+
+How the new ModManager works (all verified in the lab except the ModManager file itself):
+- Main menu button: `AttachMovie("H7TextButton", "mBtnMods", -1, GFxClikWidget)` on `H7MainMenuCntl.mMainMenu`,
+  `AddEventListener("CLIK_click", {object=cntl, func="Options"})`; its clicks arrive at
+  `H7MainMenuCntl.Options` with **empty EventData**, so a pre-hook checks `mouseX/mouseY` against the button and
+  blocks. Layout: Extras/Options move up one step (80px), Mods takes Options' slot (y=860), Quit stays (940).
+- Window: `sel = h7.first("H7MapSelectCntl")`, `list = sel.mMapSelection` (H7GfxMapList). Open =
+  `mMainMenu:SetVisibleSave(false); list:Reset(); list:Update(sel.mMapThumbnail)`. Rows: `sel:CreateArray()`, per
+  row `sel:CreateObject("Object", GFxObject)` with Index, Name, Creator, Description, VictoryConditions (array),
+  LoseConditions (array), PlayerCount, Size, Type; then `list:SetObject("mPolledMaps", arr)`,
+  `list:Invoke("AddMaps")`, `list:Invoke("ListingMapDone")`.
+- Where fields show: columns = Name | VictoryConditions[0] | PlayerCount | Size | Type; details panel = Creator
+  (label "Edytor kampanii:"), VictoryConditions, LoseConditions (shown as `[a]`), "Opis:" Description.
+  Header labels on `list`: mLblTitle, mLblMapName, mLblVictoryCondition, mLblPlayers, mLblMapSize, mLblMapType.
+  Other parts: mMapThumbnail (1345,110 493x493), mLblNoThumbnail, mMapDetails (1322,634 550x311), mBtnContinue,
+  mBtnBack, mGenerateMap; `mMapList` has mDDCondition/mDDPlayerAmount/mDDMapSize/mDDMapType filters (filled
+  from the row data automatically), mBtnClearFilters, sort buttons, mSelectedMapListItem (row: mLblMapName…
+  mLblMapType, mData).
+- Clicks come back as UnrealScript calls on `H7MapSelectCntl`: `MapClicked(clickedMapIndex)` (also once after
+  AddMaps for row 0), `BtnContinueClicked(selectedListIndex, isCampaign)`, `BtnGenerateMapClicked()`,
+  `BtnBackClicked()` (→ ClosePopup: hides the window, shows the main menu). ModManager pre-hooks them while
+  `ui.showing`; Back is not blocked, it first restores everything ModManager changed (title, header texts,
+  hidden thumbnail/Generate button, moved details, Continue label).
+- Design: columns Mod | Author | Version | Category | Status; Continue = Enable/Disable for the selected row
+  (updates the row's mLblMapType + mData.Type); details move to the thumbnail's place. A one-time log of
+  `mMapDetails.mChildsAdded` texts is in the MapClicked hook, to find and rename the details labels.
+
+Gotchas found:
+- **GFxObjects get garbage collected**: the UObject wrappers from GetObject/AttachMovie are freed when no
+  UnrealScript object references them (the Flash clip stays). Never cache them across frames; keep the instance
+  name and `GetObject` again. Objects held by script vars (`cntl.mMainMenu`, `sel.mMapSelection`) are safe.
+- **Lua can't pass array arguments** ("assigning ArrayProperty properties is not supported"); omitting the arg
+  passes an empty array, which is enough for `CreateObject(cls, type)` and `Invoke(method)`. Engine TODO.
+- Hook `args` are by name (`args.clickedMapIndex`), not index.
+- Timer callbacks log as `[lua]` and errors as `ERROR in timer (engine)` — they lose the mod's name. Engine TODO.
+- `mBG`, `mBtnOK`, `mBlockLayer` of H7CustomDifficultyPopUp are not reachable via GetObject (nil).
+- An exec script that errors or is empty still gets renamed to `.done` and overwrites an older `.done` of the
+  same name — keep lab scripts in `tests\` and copy them in.
+
+Next steps:
+1. Start the game, click **Mods**: check the window (labels, hidden parts, details position), Enable/Disable on
+   a row (log: `Loaded mod …`/`Unloaded mod …`), Back → main menu, then open the real map selection (Single
+   player → custom map) to verify everything was restored. Check the `details child N:` log lines and rename the
+   details labels (Creator/Victory/Lose) if they are reachable.
+2. Possibly color Status (htmlText), hide the sort/filter row if it looks odd.
+3. Update `docs/API.md` (`category`), commit on `feature/mods-menu`, push, open a PR (`gh` is not installed;
+   remote `origin` exists — ask the user before pushing).
+4. Engine TODOs: array arguments from Lua; mod name for timer logs/errors.
 
 ## Lua API (implemented)
 
