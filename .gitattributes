@@ -1,0 +1,2 @@
+# cmd.exe misparses labels and blocks in batch files with LF line endings.
+*.bat text eol=crlf

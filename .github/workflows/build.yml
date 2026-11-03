@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build dinput8.dll
+        shell: cmd
+        run: build.bat
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package/Binaries/Win64, package/H7ModEngine | Out-Null
+          Copy-Item bin/dinput8.dll package/Binaries/Win64/
+          Copy-Item -Recurse dist/* package/H7ModEngine/
+          Copy-Item docs/API.md package/H7ModEngine/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H7ModEngine
+          path: package/
