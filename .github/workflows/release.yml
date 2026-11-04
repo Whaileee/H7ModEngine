@@ -1,0 +1,68 @@
+name: Release
+
+# Attaches the player downloads to a GitHub release:
+#   - dinput8.dll                 the whole engine: it carries the default ini and the Mods menu (ModManager) and
+#                                 installs them into <Game>\H7ModEngine\ on first start. Players drop it into
+#                                 <Game>\Binaries\Win64\ and play.
+#   - H7ModEngine-examples.zip    optional example mods, unzipped into the game folder.
+# Runs when a release is published (creating the release in the GitHub UI is enough), or by hand with
+# "Run workflow" for an existing release tag, e.g. to rebuild its files after a fix to this workflow.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach the files to
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          submodules: true
+
+      - name: Check the tag matches the engine version
+        shell: pwsh
+        run: |
+          # h7.version (kVersion in src/lua/runtime.cpp) must be bumped before tagging: tag v1.2.3 <-> "1.2.3".
+          $m = Select-String -Path src/lua/runtime.cpp -Pattern 'kVersion = "([^"]+)"'
+          $version = $m.Matches[0].Groups[1].Value
+          if ($env:TAG.TrimStart('v') -ne $version) {
+            Write-Output "::error::Tag $env:TAG does not match kVersion `"$version`" in src/lua/runtime.cpp"
+            exit 1
+          }
+
+      - name: Build dinput8.dll
+        shell: cmd
+        run: build.bat
+
+      - name: Package example mods
+        shell: pwsh
+        run: |
+          $root = 'examples/H7ModEngine/mods'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          # ModManager is inside dinput8.dll; CLAUDE.md files are repository notes.
+          Get-ChildItem dist/mods -Directory | Where-Object Name -ne 'ModManager' |
+            ForEach-Object { Copy-Item -Recurse $_.FullName $root }
+          Copy-Item docs/API.md examples/H7ModEngine/
+          Get-ChildItem examples -Recurse -Filter CLAUDE.md | Remove-Item
+          Compress-Archive -Path examples/* -DestinationPath H7ModEngine-examples.zip
+
+      - name: Attach files to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $env:TAG bin/dinput8.dll H7ModEngine-examples.zip --clobber --repo $env:GITHUB_REPOSITORY

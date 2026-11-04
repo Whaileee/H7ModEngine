@@ -40,12 +40,17 @@ end)
 
 ## Installation
 
-1. Download the `H7ModEngine` artifact from the latest successful
-   [Build run](https://github.com/Whaileee/H7ModEngine/actions/workflows/build.yml) on `main` and unzip it.
-2. Copy its contents into the game folder (the folder that contains `Binaries`), so that you get:
-   - `<Game>\Binaries\Win64\dinput8.dll`
-   - `<Game>\H7ModEngine\` (configuration, example mods and `API.md`)
+1. Download `dinput8.dll` from the [latest release](https://github.com/Whaileee/H7ModEngine/releases/latest).
+2. Put it in `<Game>\Binaries\Win64\` (next to `MMH7Game-Win64-Shipping.exe`).
 3. Start the game through Ubisoft Connect as usual.
+
+On the first start the engine creates `<Game>\H7ModEngine\` with its configuration and the Mods menu. For the
+example mods, also download `H7ModEngine-examples.zip` from the release and unzip it into the game folder (the
+folder that contains `Binaries`).
+
+Development builds of `main` are the `H7ModEngine` artifact of the latest
+[Build run](https://github.com/Whaileee/H7ModEngine/actions/workflows/build.yml); copy its contents into the game
+folder.
 
 To check that it works, open `<Game>\H7ModEngine\logs\engine.log`: it should end with lines like
 `Loaded mod HelloWorld` and `Map: councilhub`. The main menu gets a **Mods** entry.

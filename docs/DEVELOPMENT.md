@@ -369,7 +369,19 @@ Binaries/Win64/dinput8.dll
 H7ModEngine/            (dist/ + API.md)
 ```
 
-That artifact is what players install. The version string is `kVersion` in `src/lua/runtime.cpp`.
+That artifact is for testing `main`; players install releases.
+
+`.github/workflows/release.yml` runs when a GitHub release is published (or by *Run workflow* for an existing
+tag). It builds the tag and attaches to the release:
+
+- `dinput8.dll`, the whole install: `build.bat` embeds `dist/H7ModEngine.ini` and `dist/mods/ModManager/*.lua` as
+  resources, and `src/engine/bundle.cpp` writes them into `<Game>\H7ModEngine\` at startup (the ini only if it
+  is missing; ModManager when missing or when the DLL carries a different version than it last installed, tracked
+  in `data\bundled.txt`, so a newer DLL updates the Mods menu but edits to the game copy survive restarts).
+- `H7ModEngine-examples.zip`, the other mods in `dist/mods/` plus `API.md`, laid out like the game folder.
+
+The version string is `kVersion` in `src/lua/runtime.cpp`; bump it before tagging. The release job fails unless
+the tag is `v<kVersion>` (or `<kVersion>`).
 
 `.github/workflows/docs.yml` publishes the documentation site (<https://whaileee.github.io/H7ModEngine/>) to
 GitHub Pages with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/). The site is built from the
