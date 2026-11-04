@@ -52,6 +52,9 @@ PropKind KindOf(UObject prop) {
         {"DelegateProperty", PropKind::Delegate}, {"InterfaceProperty", PropKind::Interface},
         {"MapProperty", PropKind::Map},           {"QWordProperty", PropKind::QWord},
         {"ComponentProperty", PropKind::Component},
+        // Heroes VII's lazily loaded object reference (Core.DynLoadObjectProperty, e.g. H7Faction.mStartTown): an
+        // ObjectProperty subclass whose value is the object pointer (none until the game's getter loads it).
+        {"DynLoadObjectProperty", PropKind::Object},
     };
     auto k = kinds.find(ObjName(cls));
     PropKind kind = k == kinds.end() ? PropKind::Unknown : k->second;

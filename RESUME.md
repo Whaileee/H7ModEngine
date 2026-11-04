@@ -241,6 +241,48 @@ Next steps:
    localized captions for "Mods", "Enable", "Disable" (H7Loca has the game's language).
 3. More example mods / API work.
 
+## Object factory + H2Enchantress faction mod (2026-11-04)
+
+Engine part: branch `feature/object-factory` (stacked on `docs/readme-dev-guide`). The mod lives in its own
+repository, `N:\Projects\H2Enchantress` (deploy: copy its `H2Enchantress` folder to `<Game>\H7ModEngine\mods\`).
+
+User request: a "serious" mod porting the Heroes II Enchantress (Sorceress) town as a **new** faction (user chose
+a real extra faction over reskinning Sylvan).
+
+Engine (`src/ue3/factory.*`, bindings): `h7.clone(src, name [, outer [, extra_flags]])`, `h7.new_object`,
+`h7.package(name)`, `h7.name(str)`, `h7.can_create()`, `h7.flags` (Public/Standalone/Transient/Archetype/RootSet).
+Calls the game directly at fixed RVAs (checked against their first bytes, else disabled):
+StaticConstructObject game+26e13b0 (found in execNew, GNatives[0x11]; execNew refuses Actor classes, so no script
+`new`), FName(TCHAR*, FNAME_Add) game+26cb5c0, GetTransientPackage game+26bea20. With a template the
+SubobjectRoot is INVALID_OBJECT (like execNew). RootSet is OR'ed into ObjectFlags after construction.
+Clones of archetypes keep RF_ArchetypeObject and `H7GameUtility.IsArchetype` is true for them.
+Also fixed: `h7.to_table` expanded objects inside arrays (C stack overflow); `Core.DynLoadObjectProperty` (H7's
+lazily loaded object refs, e.g. H7Faction.mStartTown, H7Creature/H7EditorHero.mVisuals, town screen, icons) is
+now read/written as an object property.
+
+Key facts learned:
+- DynLoad fields load on demand from the object's linker ("Cannot find DynloadProperty 'mVisuals' serialized in
+  Object X and its ArchetypeParents" -> fatal error in combat). Copies have no linker: call
+  `src:DynLoadObjectProperty(name)` / `DynLoadObjectArrayProperty("mTownAssets")` on the original before cloning,
+  and block the game's Del* release functions for copies and their sources.
+- Build the faction at the main menu (councilhub), not on h7logoentry: GetStartTown returns none there.
+- This install is heavily modded: 14 factions before ours (Frost, Hades, Sanctuary, Xel, Citadel, Mercenary,
+  Conflux), Sylvan town has extra mod dwellings; Sylvan's town names point at H7FactionSylvan_extra.
+- Creatures have a second stat set for skirmish (`mSkirmish*`); cost is `mUnitCost`/`mSkirmishUnitCost`.
+- Duel: armies offered per faction by their creatures' faction (H7GameData.GetDuelArmies), heroes from
+  mDuelHeroes; without them the army is empty.
+- Names are localised by object name; copies show the fallback text, so copy GetName()/GetDesc() texts.
+
+Mod (data.lua lineup/names/heroes, stats.lua, faction.lua builder, hooks.lua):
+clones Sylvan faction/town/fort/map dwellings/all buildings/hero classes/heroes/random hero/town names/duel
+armies+heroes into package `H2Enchantress`, remaps references, blocks dwellings without an H2 counterpart,
+registers in H7GameData. Verified in game: faction in GetFactions (all policies), duel with Enchantress army runs.
+Lab script `tools/factionlab.lua` in the mod repo dumps Sylvan's structure to `dumps\factionlab.txt`.
+
+Next: skirmish/adventure map (town screen, recruiting, AI), save/load, H2 abilities (dwarf magic resistance,
+unicorn blind, phoenix fire immunity), stat balance (Phoenix initiative low, Dwarf scaling capped at x3),
+H2 hero portraits/bios.
+
 ## Lua API (implemented)
 
 - Logging: `h7.log/warn/error`, `print` → `logs\engine.log` with mod prefix

@@ -7,6 +7,7 @@
 #include "../ue3/dumper.h"
 #include "../ue3/hooks.h"
 #include "../ue3/reflection.h"
+#include "../ue3/factory.h"
 
 using namespace h7;
 
@@ -85,6 +86,7 @@ static DWORD WINAPI InitThread(LPVOID) {
         Log("Could not identify UObject::ProcessInternal; mods disabled");
         return 0;
     }
+    ue3::InitFactory(); // optional: h7.new_object / h7.clone stay unavailable if this fails
     if (!InstallTickHook()) return 0;
     if (ConfigInt(L"Dev", L"DumpSDK", 0)) ue3::DumpNamesAndObjects(EnginePath(L"dumps"));
     Log("Init complete; Lua starts on the next frame");

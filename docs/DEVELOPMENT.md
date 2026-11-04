@@ -182,6 +182,7 @@ engine may free later are allocated with `scalable_realloc` (`ue3::EngineRealloc
 | `src/ue3/layout.h` | The calibrated offsets (`ue3::L`) |
 | `src/ue3/reflection.*` | Calibration; fields, properties, functions, enums, `Describe(prop)`, `EngineRealloc` |
 | `src/ue3/hooks.*` | `ProcessEvent` discovery and calls; script and native function hooks |
+| `src/ue3/factory.*` | Creating objects: `StaticConstructObject`, `FName(TCHAR*, FNAME_Add)` and `GetTransientPackage` at fixed v2.2.1 addresses, each checked against its first bytes before use |
 | `src/ue3/dumper.*` | `names.txt`, `objects.txt`, `probe.txt` and the unpacked image dump (`[Dev]` settings) |
 | `src/lua/runtime.*` | Lua state, mod discovery/order/environments, hot reload, mod toggles, events, timers, saved data, exec folder |
 | `src/lua/bindings.cpp` | The `h7` table and the object/struct/array proxies: marshaling between Lua and engine memory, calls, hooks |
