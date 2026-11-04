@@ -52,8 +52,9 @@ Development builds of `main` are the `H7ModEngine` artifact of the latest
 [Build run](https://github.com/Whaileee/H7ModEngine/actions/workflows/build.yml); copy its contents into the game
 folder.
 
-To check that it works, open `<Game>\H7ModEngine\logs\engine.log`: it should end with lines like
-`Loaded mod HelloWorld` and `Map: councilhub`. The main menu gets a **Mods** entry.
+To check that it works, look for the **Mods** entry in the main menu. If it is missing, open
+`<Game>\H7ModEngine\logs\engine.log`: a working start ends with lines like `Loaded mod ModManager` and
+`Map: councilhub` (plus one `Loaded mod` line for each other mod you installed).
 
 To uninstall, delete `<Game>\Binaries\Win64\dinput8.dll` (and the `H7ModEngine` folder if you don't want to keep
 your mods and their saved data).
