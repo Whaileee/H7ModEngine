@@ -344,7 +344,8 @@ The menus are Scaleform (GFx) movies driven by UnrealScript controllers (`H7Main
 2. Read engine memory with `mem::Read`/`mem::ReadOr` (SEH-guarded), never raw pointers; check objects with
    `CheckValidObject`. Report misuse with `luaL_error` and a message that says what was expected.
 3. Allocate anything the engine may free with `ue3::EngineRealloc`.
-4. Document it in `docs/API.md` (the section and the reference table) and add a check to `tests/selftest.lua`.
+4. Document it in `docs/API.md` (the section and the reference table) and in the full reference under
+   `docs/reference/` (signature, parameters, return values, errors), and add a check to `tests/selftest.lua`.
 
 ## Conventions
 
@@ -353,7 +354,7 @@ The menus are Scaleform (GFx) movies driven by UnrealScript controllers (`H7Main
 - Names: `PascalCase` functions and types, `g_` globals, `k` constants; Lua API names are lowercase
   (`h7.find_all`, `obj:get_name()`), UnrealScript names keep their own spelling.
 - Lua (mods and tests): 4-space indent, `local` everything, one `h7.log` prefix per mod or test.
-- Keep `docs/API.md` in step with the API, and `RESUME.md` with findings that cost time to learn.
+- Keep `docs/API.md` and `docs/reference/` in step with the API, and `RESUME.md` with findings that cost time to learn.
 - Commits: one topic each, imperative subject line, body explaining what and why. Work on a branch and open a
   pull request into `main`; CI must be green.
 - Line endings: `.bat` files are CRLF and `.sh` files LF (`.gitattributes`); cmd and bash each break on the other.
@@ -369,6 +370,27 @@ H7ModEngine/            (dist/ + API.md)
 ```
 
 That artifact is what players install. The version string is `kVersion` in `src/lua/runtime.cpp`.
+
+`.github/workflows/docs.yml` publishes the documentation site (<https://whaileee.github.io/H7ModEngine/>) to
+GitHub Pages with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/). The site is built from the
+`docs/` folder **of a release tag**, so it always documents a released version:
+
+- Publishing a release (not a prerelease) builds the docs at its tag and deploys them.
+- *Run workflow* on the Docs workflow rebuilds them for a tag you enter (default: the latest release).
+- Pull requests that change `docs/`, `mkdocs.yml` or `tools/docs/` build the site with `--strict`, so broken
+  links and anchors fail the check.
+
+The navigation is in `mkdocs.yml`; add new pages there. `tools/docs/hooks.py` puts the release tag in the site
+title and turns links that leave `docs/` (such as `../src/lua/bindings.cpp`) into GitHub links at that tag.
+To preview locally:
+
+```bash
+pip install -r tools/docs/requirements.txt
+mkdocs serve
+```
+
+One-time repository setup: *Settings → Pages → Source: GitHub Actions*, and in *Settings → Environments →
+github-pages*, allow deployments from tags (add a rule for `v*`), since release runs deploy from the tag.
 
 ## Troubleshooting
 

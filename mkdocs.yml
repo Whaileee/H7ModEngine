@@ -1,0 +1,78 @@
+site_name: H7ModEngine
+site_description: Lua modding engine for Might & Magic Heroes VII — modding guide and API reference
+site_url: https://whaileee.github.io/H7ModEngine/
+repo_url: https://github.com/Whaileee/H7ModEngine
+repo_name: Whaileee/H7ModEngine
+edit_uri: ""  # pages are built from a release tag; editing happens on main
+
+docs_dir: docs
+site_dir: site
+
+# tools/docs/hooks.py stamps the release tag on the site and turns links that leave docs/ (source files)
+# into GitHub links at that tag. The release tag comes from the H7_DOCS_REF environment variable.
+hooks:
+  - tools/docs/hooks.py
+
+nav:
+  - Home: index.md
+  - Modding guide: API.md
+  - API reference:
+      - Overview: reference/index.md
+      - h7 library: reference/h7.md
+      - Engine objects, structs and arrays: reference/objects.md
+      - Values and types: reference/types.md
+      - Mods, manifest and settings: reference/mod.md
+      - Events and timers: reference/events.md
+  - Engine development: DEVELOPMENT.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: warn
