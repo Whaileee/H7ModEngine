@@ -328,6 +328,12 @@ User wanted sliders/check boxes, the description in the picture frame and the se
 - Hot-reloading ModManager while the window is open loses the panel state; re-clicking the selected row
   doesn't fire MapClicked (select another row first).
 
+## Example mods removed from the game install (2026-11-04)
+The game's `H7ModEngine\mods` now holds only ModManager and H2Enchantress; the five example mods (and their ini
+settings, HelloWorld's saved data) were deleted there but stay in `dist\mods` for the docs and tests.
+`build.bat deploy` installs only ModManager; `build.bat deploy examples` installs them all again (needed before
+running `tests\settingstest.lua` / `modwindow_autotest.lua`).
+
 ## Lua API (implemented)
 
 - Logging: `h7.log/warn/error`, `print` → `logs\engine.log` with mod prefix

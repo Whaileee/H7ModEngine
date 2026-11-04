@@ -64,7 +64,7 @@ builds and then installs into the game folder:
 |---|---|---|
 | `bin\dinput8.dll` | `<Game>\Binaries\Win64\dinput8.dll` | replaced every time |
 | `dist\H7ModEngine.ini` | `<Game>\H7ModEngine\H7ModEngine.ini` | only if there is none yet: your local settings survive |
-| `dist\mods\*` | `<Game>\H7ModEngine\mods\` | overwritten: edits you made in the game copy are lost |
+| `dist\mods\ModManager` | `<Game>\H7ModEngine\mods\ModManager` | overwritten: edits you made in the game copy are lost. `build.bat deploy examples` also installs the example mods |
 | `dist\lib\*` | `<Game>\H7ModEngine\lib\` | shared Lua libraries, if any |
 
 The game folder defaults to `N:\Ubisoft\games\Might and Magic Heroes VII`; set `H7_GAME_DIR` to yours:
