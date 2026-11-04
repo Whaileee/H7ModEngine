@@ -112,13 +112,15 @@ loads or unloads on the next frame. The choice is stored in `H7ModEngine.ini` (s
 [Configuration](#configuration)) and overrides the manifest's `enabled`. Mods can do the same with
 `h7.set_mod_enabled(name, on)`; the `mod_toggled` event reports each change.
 
-**Settings.** A mod can offer values that players change in the Mods menu (select the mod, then **Settings**).
+**Settings.** A mod can offer values that players change in the Mods menu: selecting a mod shows its description
+and, below it, its settings as controls.
 Declare them in the manifest:
 
 ```lua
 settings = {
     { key = "multiplier", label = "Damage multiplier", default = 1.25, min = 0.25, max = 4, step = 0.25,
       description = "All combat damage is multiplied by this." },
+    { key = "gold", label = "Gold per day", default = 500, min = 0, max = 100000, control = "input" },
     { key = "log", label = "Log hits", default = true },
     { key = "who", label = "Applies to", options = { "Human player", "Everyone" }, default = "Human player" },
     { key = "greeting", label = "Greeting", type = "text", default = "Hello" },
@@ -134,6 +136,7 @@ settings = {
 | `min`, `max`, `step` | Numbers: values are clamped to `min`..`max` and rounded to a multiple of `step` (counted from `min`) |
 | `options` | Choices: the allowed values, in the order the menu cycles through them |
 | `reload` | `true`: the mod restarts when the value changes (for values only read at load time) |
+| `control` | Numbers: how the Mods menu shows it. `"slider"` (default with `min` and `max`), `"input"` (a box the player types the number into; default without a range) or `"arrows"` (steps of `step`) |
 
 Read the current values from `mod.settings` (`mod.settings.multiplier`); it always has the latest value, so read
 it when you need it rather than copying it once. Assigning (`mod.settings.log = false`) changes the setting like
@@ -141,8 +144,11 @@ the menu does. `pairs(mod.settings)` lists them. Values are stored in `H7ModEngi
 `[Mod.<name>]`. When a value changes the `setting_changed` event fires (`mod`, `key`, `value`). Other mods
 and exec scripts use `h7.mod_settings(name)` (a list of the declarations with their current `value`) and
 `h7.set_mod_setting(name, key, value)`, which returns the stored (clamped) value and raises an error for an
-unknown key or an invalid value. In the menu, **Change** toggles on/off, cycles choices and steps numbers up
-(wrapping to `min`); text settings are shown but can only be changed in code or the ini.
+unknown key or an invalid value. In the menu, numbers get a slider (drag or click it) or a number box (click it,
+type, Enter saves, Escape cancels, clicking elsewhere saves; the value is clamped to the range), on/off settings
+a check box, choices arrows that step through the values; text settings are shown but can only be changed in
+code or the ini. Every change is saved at once. The panel has room
+for five settings; further ones are only listed as being in the ini.
 
 **Each mod has its own globals.** Global variables you create stay inside your mod; reading a global you didn't
 create falls through to the shared environment (`h7`, `string`, `math`, `table`, ...). Two mods can both define
@@ -549,7 +555,7 @@ DumpImage=0
 
 | Mod | Shows |
 |---|---|
-| ModManager | The main menu's Mods entry and its mod and settings lists: adding Flash widgets to a game menu and routing their clicks |
+| ModManager | The main menu's Mods entry, the mod list and the settings controls: adding Flash clips to a game window and reading mouse input |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |
@@ -572,5 +578,5 @@ DumpImage=0
 - The game's Flash menus cache every translation they ask for (`H7FlashMovieCntl.FlashLocalize`) for the rest of
   the session, so changing a translation through a hook also changes it everywhere else that key is used.
 - Mods run on the game thread: a slow hook slows the game down.
-- In the Mods menu the selection goes back to the first row after each change (the list is rebuilt; its rows
-  can't be selected from Lua).
+- In the Mods menu the selection goes back to the first row after a mod is enabled or disabled (the list is
+  rebuilt; its rows can't be selected from Lua).

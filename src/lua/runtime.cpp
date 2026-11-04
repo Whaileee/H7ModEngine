@@ -40,6 +40,7 @@ struct Setting {
     std::vector<std::string> options; // choice
     std::string def, value;          // normalized text
     bool reload = false;             // reload the mod when the value changes
+    std::string control;             // how menus should show it ("slider", "input", "arrows"; "" = their choice)
 };
 
 struct Mod {
@@ -356,6 +357,7 @@ static bool ParseSetting(lua_State* L, Mod& m, Setting& st) {
     lua_getfield(L, t, "max"); if (lua_isnumber(L, -1)) st.max = lua_tonumber(L, -1); lua_pop(L, 1);
     lua_getfield(L, t, "step"); if (lua_isnumber(L, -1)) st.step = lua_tonumber(L, -1); lua_pop(L, 1);
     lua_getfield(L, t, "reload"); st.reload = lua_toboolean(L, -1); lua_pop(L, 1);
+    st.control = TableString(L, t, "control", "");
     std::string v;
     if (defType == LUA_TNIL || !Normalize(st, def, v)) {
         v = st.type == "bool" ? "false" : st.type == "number" ? FormatNumber(std::isfinite(st.min) ? st.min : 0)
@@ -588,7 +590,8 @@ static void PushSettingsProxy(lua_State* L, int modId) {
     lua_setmetatable(L, -2);
 }
 
-// h7.mod_settings(name) -> { {key, label, description, type, value, default, min, max, step, options, reload}, ... }
+// h7.mod_settings(name) -> { {key, label, description, type, value, default, min, max, step, options, reload,
+//                              control}, ... }
 static int H_mod_settings(lua_State* L) {
     Mod* m = FindMod(luaL_checkstring(L, 1));
     if (!m) return luaL_error(L, "unknown mod '%s'", lua_tostring(L, 1));
@@ -616,6 +619,7 @@ static int H_mod_settings(lua_State* L) {
             lua_setfield(L, -2, "options");
         }
         lua_pushboolean(L, st.reload); lua_setfield(L, -2, "reload");
+        if (!st.control.empty()) { lua_pushstring(L, st.control.c_str()); lua_setfield(L, -2, "control"); }
         lua_rawseti(L, -2, ++i);
     }
     return 1;

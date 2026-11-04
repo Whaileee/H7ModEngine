@@ -302,6 +302,32 @@ H2 hero portraits/bios.
   Mods 1730,890; sub-menu Wstecz 1730,970; map window Back 240,1015, Continue 1810,1015, Generate 1025,978,
   rows from y=224 every 49 px.
 
+### Settings panel (2026-11-04, follow-up on `feature/mod-settings`, verified in game)
+User wanted sliders/check boxes, the description in the picture frame and the settings below it. ModManager:
+- `panel.lua`: description = H7Label (multiline) in the frame (1366,128 452x456); hidden: mMapThumbnail,
+  mLblNoThumbnail, mMapDetails, mGenerateMap. Settings area 1342,640 (470 wide), 5 rows of 48 px.
+- Controls are clips from H7MapSelect's own library (no checkbox/slider *component* symbol exists there):
+  slider = `H7Slider_BG_Gold` (a 14x423 vertical bar, rotated -90) + `H7Slider_Gold_Thumb`; check box =
+  `H7GUICommandButton` (36 px, DisplaySelectState + alpha 0.35 when off); choices = `H7LeftArrow`/`H7RightArrow`
+  + H7Label. `H7DropDown` also attaches (AddItem API untested).
+- Input: Flash listeners on attached clips call back with EMPTY EventData (no type/target) and only for
+  clicks, so the panel ignores Flash events and hooks `Engine.Console.InputKey` (Key "LeftMouseButton", Event 0
+  pressed / 1 released / 2 repeat) and hit-tests `window:GetFloat("mouseX"/"mouseY")` (window coords = screen
+  pixels - 64 in x here). The press is handled on the next tick: at InputKey time Flash's mouse position is
+  still the old one. Slider drag follows the mouse in `tick`, saves on release.
+- Synthetic input: the game reads mouse movement as raw input; `SetCursorPos` alone doesn't move the game's
+  cursor. `tests/click.ps1` nudges with relative moves and drags with absolute VIRTUALDESK moves (the game
+  window is on a monitor with negative coordinates).
+- Number box (`control = "input"`, default for numbers without a range): H7TooltipBG frame + its own H7Label
+  (created after the frame so it draws on top; clips stack in creation order). Keys come from
+  Console.InputKey; key names are lower-case as the engine first registered them ("seven", "enter"), so the
+  panel compares lower-cased. A post-hook returning true marks keys as handled while editing (Escape then
+  doesn't close the window). `tests/keys.ps1 <keys>` types into the game (keybd_event works, unlike mouse).
+  H7DropDown as a box left a grey slot where its arrow was; don't reuse clip names across clip types
+  (ensure() returns the existing clip of that name).
+- Hot-reloading ModManager while the window is open loses the panel state; re-clicking the selected row
+  doesn't fire MapClicked (select another row first).
+
 ## Lua API (implemented)
 
 - Logging: `h7.log/warn/error`, `print` → `logs\engine.log` with mod prefix

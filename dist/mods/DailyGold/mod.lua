@@ -7,7 +7,7 @@ return {
     enabled = false, -- example mod: turn it on in the Mods menu
     -- Shown and editable in the Mods menu; read with mod.settings.gold
     settings = {
-        { key = "gold", label = "Gold per day", default = 500, min = 0, max = 5000, step = 100,
+        { key = "gold", label = "Gold per day", default = 500, min = 0, max = 100000, control = "input",
           description = "Gold the human player receives at the start of every day." },
     },
 }
