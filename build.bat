@@ -2,7 +2,9 @@
 rem Builds bin\dinput8.dll with MSVC (x64). Usage: build.bat [deploy]
 setlocal
 set ROOT=%~dp0
+rem Game folder for "deploy"; set H7_GAME_DIR to use another one.
 set GAME=N:\Ubisoft\games\Might and Magic Heroes VII
+if defined H7_GAME_DIR set GAME=%H7_GAME_DIR%
 rem Find any Visual Studio edition with the C++ x64 tools (Community, BuildTools, Enterprise on CI runners).
 rem (%%VSWHERE%% expands inside the child command: the ")" of "Program Files (x86)" would end the for clause.)
 set VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe

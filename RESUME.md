@@ -1,7 +1,8 @@
-# H7ModEngine — resume notes (saved 2026-11-04 ~13:10)
+# H7ModEngine — resume notes (saved 2026-11-04 ~13:30)
 
-**Current work: the in-game Mods menu, branch `feature/mods-menu` (uncommitted)** — see
-[Mods menu](#mods-menu-feature-branch-in-progress) below for the state and the next steps.
+Engineering notebook: findings, verified layouts and the history of in-game runs. For an overview start with
+[README.md](README.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (engine developers) and [docs/API.md](docs/API.md)
+(modders). The Mods menu (PR #2) is merged into `main`; see [Mods menu](#mods-menu-feature-branch-in-progress).
 
 Goal: a Lua 5.4 modding engine for Might & Magic Heroes VII (UE3, build v2.2.1) that exposes an easy API
 to the community. Loaded as a `dinput8.dll` proxy; no game code is patched.

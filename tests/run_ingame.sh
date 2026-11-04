@@ -4,7 +4,8 @@
 # The script is copied into <Game>\H7ModEngine\exec\; its log lines are printed. A line ending in
 # "SHOT <name>" saves <screenshot dir>\<name>.png (tests\shot.ps1); a line ending in "DONE" ends the run.
 set -u
-GAME="/n/Ubisoft/games/Might and Magic Heroes VII/H7ModEngine"
+# Game folder: set H7_GAME_DIR (Windows or Git Bash path) to use another one.
+GAME="$(cygpath -u "${H7_GAME_DIR:-N:/Ubisoft/games/Might and Magic Heroes VII}")/H7ModEngine"
 LOG="$GAME/logs/engine.log"
 TEST="$1"; SHOTS="$2"; TIMEOUT="${3:-90}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
