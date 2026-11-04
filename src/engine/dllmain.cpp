@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "paths.h"
+#include "bundle.h"
 #include "../core/log.h"
 #include "../core/memory.h"
 #include "../lua/runtime.h"
@@ -61,6 +62,7 @@ static DWORD WINAPI InitThread(LPVOID) {
     LogInit(EnginePath(L"logs\\engine.log"));
     mem::InitGameModule();
     Log("H7ModEngine starting; game image %p-%p", (void*)mem::g_game.base, (void*)mem::g_game.end);
+    InstallBundledFiles(); // default ini + ModManager, so a release is just dinput8.dll
 
     // The executable is packed: wait until the engine has unpacked and built its name/object tables.
     if (!WaitFor("GNames", 300000, [] { return ue3::FindGNames(); })) return 0;

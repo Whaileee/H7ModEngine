@@ -33,7 +33,19 @@ set CPPSRC=
 for /r "%ROOT%src" %%f in (*.cpp) do call set CPPSRC=%%CPPSRC%% "%%f"
 cl /nologo /c /O2 /MT /EHsc /std:c++20 /W3 /Zi /D_CRT_SECURE_NO_WARNINGS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I"%LUA%" %CPPSRC% || exit /b 1
 
-link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj user32.lib shell32.lib || exit /b 1
+rem Embed the default ini and ModManager in the DLL (installed at startup by src\engine\bundle.cpp), so a release
+rem is just dinput8.dll. Manifest lines: "<resource id> <keep = write if missing | sync = keep identical> <path>".
+set BUNDLE=%ROOT%build\bundle
+if not exist "%BUNDLE%" mkdir "%BUNDLE%"
+set ID=1000
+type nul > "%BUNDLE%\manifest.txt"
+set RCPATH=%BUNDLE%\manifest.txt
+> "%BUNDLE%\bundle.rc" echo 1000 RCDATA "%RCPATH:\=/%"
+call :bundle keep "%ROOT%dist\H7ModEngine.ini" "H7ModEngine.ini"
+for %%f in ("%ROOT%dist\mods\ModManager\*.lua") do call :bundle sync "%%~ff" "mods\ModManager\%%~nxf"
+rc /nologo /fo "%ROOT%build\obj\bundle.res" "%BUNDLE%\bundle.rc" || exit /b 1
+
+link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj bundle.res user32.lib shell32.lib || exit /b 1
 echo Built %ROOT%bin\dinput8.dll
 
 if /i "%1"=="deploy" (
@@ -54,3 +66,11 @@ if /i "%1"=="deploy" (
   echo Deployed to %GAME%
 )
 endlocal
+exit /b 0
+
+:bundle
+set /a ID+=1
+set RCPATH=%~2
+>> "%BUNDLE%\bundle.rc" echo %ID% RCDATA "%RCPATH:\=/%"
+>> "%BUNDLE%\manifest.txt" echo %ID% %1 %~3
+exit /b 0
