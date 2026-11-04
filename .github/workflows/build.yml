@@ -24,6 +24,8 @@ jobs:
           Copy-Item bin/dinput8.dll package/Binaries/Win64/
           Copy-Item -Recurse dist/* package/H7ModEngine/
           Copy-Item docs/API.md package/H7ModEngine/
+          # CLAUDE.md files are notes for working on the repo, not part of the release.
+          Get-ChildItem package -Recurse -Filter CLAUDE.md | Remove-Item
 
       - uses: actions/upload-artifact@v4
         with:
