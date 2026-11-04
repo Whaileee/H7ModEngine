@@ -22,6 +22,28 @@ check("read array", function() return #pc.Attached end)
 check("is_a", function() return pc:is_a("Actor") and not pc:is_a("Pawn") end)
 check("write bool", function() local old = pc.bHidden; pc.bHidden = old; return pc.bHidden == old end)
 check("find_all", function() return #h7.find_all("Engine.Actor") .. " actors" end)
+
+-- Writing arrays from Lua tables (main menu only: uses the main menu's movie controller).
+local cntl = h7.first("H7MainMenuCntl")
+if cntl then
+    check("write array", function()
+        local old = h7.to_table(cntl.mLocaSection)
+        cntl.mLocaSection = { "A", "B" }
+        local got = #cntl.mLocaSection .. ":" .. cntl.mLocaSection[2]
+        cntl.mLocaSection = old
+        assert(got == "2:B", got)
+        assert(#cntl.mLocaSection == #old, "not restored")
+        return got
+    end)
+    check("array argument", function()
+        local AS = h7.enum("ASType")
+        local arr = cntl:CreateArray()
+        arr:Invoke("push", { { Type = AS.AS_String, s = "first" }, { Type = AS.AS_Number, n = 2 } })
+        local got = arr:GetElementString(0) .. "," .. arr:GetElementFloat(1)
+        assert(got == "first,2.0", got)
+        return got
+    end)
+end
 check("mods", function() return #h7.mods() .. " mods" end)
 
 -- Multiplexed hook on the function that drives the engine heartbeat.

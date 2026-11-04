@@ -127,6 +127,11 @@ def parse_abc(d):
         ifaces = [r.u30() for _ in range(r.u30())]
         r.u30()
         insts.append((mn(name), mn(sup), traits()))
+    # Class (static) traits, in the same order as the instances.
+    for i in range(len(insts)):
+        r.u30()  # cinit
+        name, sup, tr = insts[i]
+        insts[i] = (name, sup, tr + [('static ' + k, n, t) for k, n, t in traits()])
     return strs, insts
 
 

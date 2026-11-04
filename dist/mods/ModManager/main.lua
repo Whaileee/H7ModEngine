@@ -6,11 +6,14 @@ local Obj = h7.find_class("GFxUI.GFxObject")
 local Clik = h7.find_class("GFxUI.GFxClikWidget")
 local SELECT = "MMH7Game.H7MapSelectCntl."
 
--- Column headers of the map list, in order, and the row fields that fill each column.
-local HEADERS = { mLblMapName = "Mod", mLblVictoryCondition = "Author", mLblPlayers = "Version",
-    mLblMapSize = "Category", mLblMapType = "Status" }
--- Parts of the window that mods don't use.
-local UNUSED = { "mMapThumbnail", "mLblNoThumbnail", "mGenerateMap" }
+-- Column headers of the map list. Rows fill the columns from their Name, VictoryConditions[0], PlayerCount, Size
+-- and Type fields. VictoryConditions is left out: the details panel would list it as "victory conditions", and
+-- renaming that caption is cached by the movie for the game's own map list too. So the second column stays empty
+-- and the author is shown as the details' "Creator".
+local HEADERS = { mLblMapName = "Mod", mLblVictoryCondition = "", mLblPlayers = "Version", mLblMapSize = "Category",
+    mLblMapType = "Status" }
+-- Parts of the window that mods don't use. The picture frame shows the game's "no picture" text instead.
+local UNUSED = { "mMapThumbnail", "mGenerateMap", "mMapList.mDDCondition" }
 
 -- State that has to survive reloads of this mod lives as long as the main menu.
 _G.__modmanager = _G.__modmanager or {}
@@ -18,11 +21,22 @@ local ui = _G.__modmanager
 
 -- GFxObjects returned by GetObject/AttachMovie are garbage collected by the engine when nothing in
 -- UnrealScript holds them (the Flash clips stay), so they are looked up by name whenever they are used.
-local function child(parent, key) return parent and parent:GetObject(key, Obj) end
+-- `path` may name nested parts: "mMapList.mDDCondition".
+local function child(parent, path)
+    for key in path:gmatch("[^.]+") do
+        if not parent then return nil end
+        parent = parent:GetObject(key, Obj)
+    end
+    return parent
+end
 local function select_cntl() return h7.first("H7MapSelectCntl") end
 local function window() return select_cntl().mMapSelection end
 
-local function status_text(enabled) return enabled and "Enabled" or "Disabled" end
+-- "Failed": enabled but not loaded (the log says why).
+local function status_of(m)
+    if not m.enabled then return "Disabled" end
+    return m.loaded and "Enabled" or "Failed"
+end
 
 local function mod_by_name(name)
     for _, m in ipairs(h7.mods()) do
@@ -30,58 +44,57 @@ local function mod_by_name(name)
     end
 end
 
--- Remembers a window part's current value (once per opening) so close() can put it back.
-local function change(key, field, value, kind)
-    local o = child(window(), key)
-    if not o then return end
-    local get, set = "Get" .. kind, "Set" .. kind
-    ui.saved[#ui.saved + 1] = { key = key, field = field, kind = kind, value = o[get](o, field) }
-    o[set](o, field, value)
-end
-
-local function restore()
-    for i = #ui.saved, 1, -1 do
-        local s = ui.saved[i]
-        local o = child(window(), s.key)
-        if o then o["Set" .. s.kind](o, s.field, s.value) end
-    end
-    ui.saved = {}
-    ui.showing = false
-end
-
 local function set_continue_label(enabled)
     local b = child(window(), "mBtnContinue")
     if b then b:SetString("text", enabled and "Disable" or "Enable") end
 end
 
+-- Changes a window part, remembering its original value the first time (once per game session), so restore()
+-- puts the window back even after a reload of this mod or a failed restore.
+local function change(path, field, value, kind)
+    local o = child(window(), path)
+    if not o then return end
+    ui.originals = ui.originals or {}
+    local key = path .. "|" .. field
+    if ui.originals[key] == nil then
+        ui.originals[key] = { path = path, field = field, kind = kind, value = o["Get" .. kind](o, field) }
+    end
+    o["Set" .. kind](o, field, value)
+end
+
+local function restore()
+    ui.showing = false
+    for _, s in pairs(ui.originals or {}) do
+        local ok, err = pcall(function()
+            local o = child(window(), s.path)
+            if o then o["Set" .. s.kind](o, s.field, s.value) end
+        end)
+        if not ok then h7.warn(("could not restore %s.%s: %s"):format(s.path, s.field, tostring(err))) end
+    end
+end
+
+-- Row texts go through the movie's localization: all-caps words would be taken for keys.
 local function fill(sel, list)
     local rows = sel:CreateArray()
     ui.rows = {} -- row index (from 0, as the window reports it) -> mod name
     local n = 0
     for _, m in ipairs(h7.mods()) do
         if not m.hidden then
-            local i = n
-            n = n + 1
-            ui.rows[i] = m.name
             local o = sel:CreateObject("Object", Obj)
-            o:SetInt("Index", i)
+            o:SetInt("Index", n)
             o:SetString("Name", m.name)
-            o:SetString("Creator", m.author)
+            o:SetString("Creator", m.author ~= "" and m.author or "-")
             o:SetString("Description", m.description)
-            local author = sel:CreateArray()
-            author:SetElementString(0, m.author)
-            o:SetObject("VictoryConditions", author)
-            local version = sel:CreateArray()
-            version:SetElementString(0, m.version)
-            o:SetObject("LoseConditions", version)
-            o:SetString("PlayerCount", m.version)
-            o:SetString("Size", (m.category or "") ~= "" and m.category or "-")
-            o:SetString("Type", status_text(m.enabled))
-            rows:SetElementObject(i, o)
+            o:SetString("PlayerCount", m.version ~= "" and m.version or "-")
+            o:SetString("Size", m.category ~= "" and m.category or "-")
+            o:SetString("Type", status_of(m))
+            rows:SetElementObject(n, o)
+            ui.rows[n] = m.name
+            n = n + 1
         end
     end
     list:SetObject("mPolledMaps", rows)
-    list:Invoke("AddMaps")
+    list:Invoke("AddMaps") -- selects the first row
     list:Invoke("ListingMapDone")
     h7.log(("Mods window: %d mods"):format(n))
 end
@@ -92,15 +105,13 @@ local function open()
     ui.cntl.mMainMenu:SetVisibleSave(false)
     list:Reset()
     list:Update(sel.mMapThumbnail)
-    ui.showing, ui.saved = true, {}
+    ui.showing = true
     change("mLblTitle", "text", "Mods", "String")
     for key, text in pairs(HEADERS) do change(key, "text", text, "String") end
     for _, key in ipairs(UNUSED) do change(key, "visible", false, "Bool") end
-    -- The details take the picture's place.
-    local thumb = child(list, "mMapThumbnail")
-    if thumb then change("mMapDetails", "y", thumb:GetFloat("y"), "Float") end
-    ui.saved[#ui.saved + 1] = { key = "mBtnContinue", field = "text", kind = "String",
-        value = child(list, "mBtnContinue"):GetString("text") }
+    change("mLblNoThumbnail", "visible", true, "Bool")
+    local continue = child(list, "mBtnContinue")
+    change("mBtnContinue", "text", continue:GetString("text"), "String") -- set per row by set_continue_label
     fill(sel, list)
 end
 
@@ -109,33 +120,26 @@ h7.hook(SELECT .. "MapClicked", function(self, args)
     if not ui.showing then return end
     local m = mod_by_name(ui.rows[args.clickedMapIndex])
     if m then set_continue_label(m.enabled) end
-    local details = child(window(), "mMapDetails")
-    local added = details and child(details, "mChildsAdded")
-    if added and not ui.logged_details then -- which labels the details panel shows, to rename them
-        ui.logged_details = true
-        for i = 0, added:GetInt("length") - 1 do
-            local c = added:GetElementObject(i, Obj)
-            h7.log(("details child %d: %s"):format(i, c and tostring(c:GetString("text")) or "nil"))
-        end
-    end
     return true -- no map thumbnail to load
 end)
 
+-- Continue turns the selected mod on or off.
 h7.hook(SELECT .. "BtnContinueClicked", function(self, args)
     if not ui.showing then return end
     local m = mod_by_name(ui.rows[args.selectedListIndex])
-    if not m then return true end
-    h7.set_mod_enabled(m.name, not m.enabled)
-    local enabled = not m.enabled
-    set_continue_label(enabled)
-    local item = child(child(window(), "mMapList"), "mSelectedMapListItem")
-    if item then
-        local lbl = child(item, "mLblMapType")
-        if lbl then lbl:SetString("text", status_text(enabled)) end
-        local data = child(item, "mData")
-        if data then data:SetString("Type", status_text(enabled)) end -- what the Status filter sees
+    if m then
+        h7.set_mod_enabled(m.name, not m.enabled)
+        set_continue_label(not m.enabled)
     end
     return true -- don't start a map
+end)
+
+-- Rows can't be changed once added, so the list is filled again with the new status (the selection goes back
+-- to the first row).
+h7.on("mod_toggled", function()
+    if not ui.showing then return end
+    restore()
+    open()
 end)
 
 h7.hook(SELECT .. "BtnGenerateMapClicked", function()
@@ -176,6 +180,7 @@ local function install()
         for k in pairs(ui) do ui[k] = nil end
         ui.cntl = cntl
     end
+    ui.open = open -- for tests\modwindow_autotest.lua
     if not child(menu, "mBtnMods") then
         local extras, options = child(menu, "mBtnExtras"), child(menu, "mBtnOptions")
         local step = options:GetFloat("y") - extras:GetFloat("y")

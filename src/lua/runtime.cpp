@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -50,17 +51,12 @@ static int g_currentMod = 0;
 static std::string g_noMod = "engine";
 
 int CurrentModId() { return g_currentMod; }
+int SetCurrentModId(int id) { return std::exchange(g_currentMod, id); }
 const std::string& ModName(int id) {
     for (auto& m : g_mods)
         if (m.id == id) return m.name;
     return g_noMod;
 }
-
-struct ModScope {
-    int saved;
-    explicit ModScope(int id) : saved(g_currentMod) { g_currentMod = id; }
-    ~ModScope() { g_currentMod = saved; }
-};
 
 void Report(const std::string& where, const std::string& error) { Log("ERROR in %s: %s", where.c_str(), error.c_str()); }
 

@@ -97,6 +97,7 @@ return {
     description = "What the mod does.",
     load_after = { "OtherMod" }, -- load after these mods (if they are installed)
     enabled = true,              -- false: off until a player turns it on
+    category = "Combat",         -- shown (and filterable) in the Mods menu
     hidden = false,              -- true: not listed in the in-game Mods menu
 }
 ```
@@ -249,6 +250,18 @@ obelisks:add(value)                        -- append; returns the new length
 obelisks:remove(2)                         -- remove element 2, shifting the rest down
 ```
 
+Assigning a Lua table (or another engine array) to an array property replaces its contents:
+`obj.mNames = {"a", "b"}`. The same works for array parameters of a function call; elements are converted like
+properties, so an array of structs takes a table of tables:
+
+```lua
+-- GFxObject.Invoke(string Member, array<ASValue> args)
+local AS = h7.enum("ASType")
+widget:Invoke("setTextColor", { { Type = AS.AS_Number, n = 0x9be37a } })
+```
+
+Leaving an array argument out passes an empty array.
+
 An array *returned by a function* is a plain Lua table copy instead (`player:GetHeroes()`), since the engine's
 copy is gone once the call returns. UnrealScript's `private`/`protected` don't apply: mods can read and write
 every property.
@@ -394,6 +407,9 @@ belongs to the mod, not to a savegame.
 | `h7.warn(...)` | `WARNING [MyMod] message` |
 | `h7.error(...)` | `ERROR [MyMod] message` |
 
+Hooks, event handlers and timers run as the mod that registered them: their log lines carry its name, and any
+hook, handler or timer they create belongs to that mod too (and is removed when it unloads).
+
 Errors inside hooks, event handlers and timers are caught and logged as `ERROR in hook ... (MyMod)` with a stack
 trace; the game keeps running and the hook stays active.
 
@@ -441,7 +457,7 @@ DumpImage=0
 | `h7.hook(func, fn [, "pre" \| "post"])`, `h7.hook_post(func, fn)`, `h7.unhook(id)` | [Hooks](#hooks) |
 | `h7.on(event, fn)`, `h7.off(id)` | [Events](#events-and-timers) |
 | `h7.after(seconds, fn)`, `h7.every(seconds, fn)`, `h7.cancel(id)` | [Timers](#events-and-timers) |
-| `h7.mods()` | `{name, version, author, description, enabled, loaded, hidden}` for every installed mod |
+| `h7.mods()` | `{name, version, author, description, category, enabled, loaded, hidden}` for every installed mod (`enabled` but not `loaded`: it failed to load, see the log) |
 | `h7.set_mod_enabled(name, on)` | Turn a mod on or off; saved in the ini, applied on the next frame |
 | `h7.reload()` | Unload and reload all mods (on the next frame) |
 | `h7.exec(command)` | Run a console command |
@@ -470,4 +486,9 @@ DumpImage=0
 - Flash objects (`GFxObject`) returned by `GetObject`/`AttachMovie` are freed by the engine's garbage
   collector when no UnrealScript object holds them. Keep the clip's name and call `GetObject` again when you
   need it, instead of storing the object.
+- `GetObject` only reaches display objects (named clips, buttons, labels) and objects created from Unreal
+  (`CreateObject`/`CreateArray`); members holding arrays or objects created by the movie's own ActionScript
+  return `nil`.
+- The game's Flash menus cache every translation they ask for (`H7FlashMovieCntl.FlashLocalize`) for the rest of
+  the session, so changing a translation through a hook also changes it everywhere else that key is used.
 - Mods run on the game thread: a slow hook slows the game down.
