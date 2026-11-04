@@ -1,4 +1,7 @@
-# H7ModEngine — resume notes (saved 2026-11-03 ~19:45)
+# H7ModEngine — resume notes (saved 2026-11-04 ~13:10)
+
+**Current work: the in-game Mods menu, branch `feature/mods-menu` (uncommitted)** — see
+[Mods menu](#mods-menu-feature-branch-in-progress) below for the state and the next steps.
 
 Goal: a Lua 5.4 modding engine for Might & Magic Heroes VII (UE3, build v2.2.1) that exposes an easy API
 to the community. Loaded as a `dinput8.dll` proxy; no game code is patched.
@@ -16,7 +19,7 @@ Game workspace reference: `N:\Ubisoft\games\Might and Magic Heroes VII\H7_REFERE
 | `build.bat` / `build.bat deploy` | Build `bin\dinput8.dll`; `deploy` copies it to `<Game>\Binaries\Win64\` plus `dist\` content to `<Game>\H7ModEngine\` |
 | `dist\H7ModEngine.ini`, `dist\mods\` | Default config; example mods HelloWorld (enabled) + DailyGold, CombatXP, DamageScale, HeroMovement (shipped `enabled = false`; `deploy` overwrites the game copies, so re-enable them there for testing) |
 | `docs\API.md` | Modder reference (written 2026-11-03 from the source + verified behaviour) |
-| `tests\*.lua` | In-game scripts: copy into `<Game>\H7ModEngine\exec\` while the game runs. `selftest` (API), `hooktest` (block/override/args/script→script), `sigdump` (signatures), `daytrace` (call-count tracer for ~117 combat/calendar functions) |
+| `tests\*.lua` | In-game scripts: copy into `<Game>\H7ModEngine\exec\` while the game runs. `selftest` (API), `hooktest` (block/override/args/script→script), `sigdump` (signatures), `daytrace` (call-count tracer for ~117 combat/calendar functions), `modwindow_autotest` (Mods window, run with `tests/run_ingame.sh`, which also takes screenshots) |
 | `third_party\lua` | Lua 5.4.7: git submodule of github.com/lua/lua pinned at tag v5.4.7 (`git submodule update --init` after cloning); compiled as C++ so errors unwind as exceptions |
 | `re\dump\` | Unpacked game image dump + early names/objects dumps (git-ignored, like `bin\`, `build\` and `re\ghidra_proj\`) |
 | `re\ghidra_proj\` | Ghidra project (headless analysis of the dump was started in background; may be complete) |
@@ -148,6 +151,94 @@ Next steps:
 
 Open risks: natives with iNative called through ProcessEvent (SDK trick: clear iNative); hooks on native
 functions get no params and can't block; protector integrity checks (none hit so far — we only touch heap data).
+
+## Mods menu (feature branch, in progress)
+
+User request: when the engine is on, a main menu entry **Mods** lists every mod with its description and lets
+players enable/disable it. The user wants it to look like the game's **map selection screen** (table on the left,
+details on the right, Back/Continue buttons), not a small popup.
+
+Committed on `feature/mods-menu` (dff0a32, local, not pushed); the 2026-11-04 batch below is not committed yet.
+- Engine (`runtime.cpp`): mod state — manifest `enabled`/`hidden`/`category`; ini `[Mods] Enabled=`/`Disabled=`
+  override the manifest; `h7.set_mod_enabled(name, on)` writes the ini, the mod loads/unloads on the next frame and
+  `mod_toggled(name, enabled)` fires; `h7.mods()` returns name/version/author/description/category/enabled/loaded/
+  hidden. Disabled mods are still discovered (listed) but not loaded.
+- Engine (`bindings.cpp`): delegate params accept `{object=, func=}` (FScriptDelegate {UObject*, FName}).
+- Example mods have a `category` (Combat/Economy/Adventure/Example). All of it is in `docs/API.md`.
+- `dist/mods/ModManager/` (`hidden = true`): uses the map selection window. The previous popup version
+  (custom-difficulty popup, paged) worked; it was never committed.
+- `tests/swfdump.lua` (dumps SwfMovie.RawData to `dumps\swf\`), `tests/menulab.lua` (main menu button),
+  `tests/modlistlab.lua` (fills the map selection window with mods via exec — verified with a screenshot).
+- `re/swfinfo.py <file.swf> [--strings]`: lists a SWF/GFX movie's tags, symbols and AS3 classes with members
+  (instance and static).
+
+Batch 2026-11-04 (all **verified in game**, run 17 + hot reloads; game kept running):
+- Engine: hooks run inside `ModScope(mod)` (`ModScope` in runtime.h, `SetCurrentModId`): logs, timers, handlers and
+  hooks created in hook callbacks belong to the mod. Verified: `[ModManager] Mods button installed`.
+- Engine: `WriteElem` handles `ArrayProperty` (Lua sequence or engine array replaces the contents; old buffer and
+  strings freed with `EngineRealloc(p, 0)`); `CallUFunction` frees strings/arrays left in its parameter buffer
+  (`FreeOwned`). Selftest 22/22 incl. "write array" and "array argument" (`Invoke("push", {ASValue...})`).
+- ModManager (final design, verified by `tests/modwindow_autotest.lua`):
+  - columns Mod | (blank, "-") | Version | Category | Status; details panel = "Creator" (author) + Description;
+    picture frame shows the game's "no picture" label; Generate map and the 2nd column's filter hidden.
+  - Continue = Enable/Disable; on `mod_toggled` the window is filled again (restore() + open()) so Status is
+    right — the selection goes back to the first row (rows can't be changed or selected from Lua).
+  - `change()` remembers each part's original value once per game session (`ui.originals`), `restore()` sets
+    each one in its own pcall — a failed restore once lost the originals and left "Mods" texts in the game's
+    map selection (repaired by hand with an exec script).
+- Test tooling: `tests/run_ingame.sh <test.lua> <shotdir> [timeout]` copies a test into exec, prints its log
+  lines and saves a screenshot (`tests/shot.ps1`, PrintWindow of the game window, any display) for every
+  "SHOT <name>" line, ending at "DONE". **The game only draws while it is visible**: covered, PrintWindow returns
+  the last frame — trust the logged state, not the picture.
+
+How ModManager drives the window:
+- Main menu button: `AttachMovie("H7TextButton", "mBtnMods", -1, GFxClikWidget)` on `H7MainMenuCntl.mMainMenu`,
+  `AddEventListener("CLIK_click", {object=cntl, func="Options"})`; its clicks arrive at
+  `H7MainMenuCntl.Options` with **empty EventData**, so a pre-hook checks `mouseX/mouseY` against the button and
+  blocks. Layout: Extras/Options move up one step (80px), Mods takes Options' slot (y=860), Quit stays (940).
+- Window: `sel = h7.first("H7MapSelectCntl")`, `list = sel.mMapSelection` (H7GfxMapList). Open =
+  `mMainMenu:SetVisibleSave(false); list:Reset(); list:Update(sel.mMapThumbnail)`. Rows: `sel:CreateArray()`, per
+  row `sel:CreateObject("Object", GFxObject)` with Index, Name, Creator, Description, PlayerCount, Size, Type
+  (optionally VictoryConditions/LoseConditions arrays); then `list:SetObject("mPolledMaps", arr)`,
+  `list:Invoke("AddMaps")`, `list:Invoke("ListingMapDone")`.
+- Parts on `list`: mLblTitle, header labels mLblMapName/mLblVictoryCondition/mLblPlayers/mLblMapSize/mLblMapType,
+  mMapThumbnail (1345,110 493x493), mLblNoThumbnail ("Brak obrazka"), mMapDetails (1322,634 550x311),
+  mBtnContinue, mBtnBack, mGenerateMap; `mMapList` has the filters mDDCondition/mDDPlayerAmount/mDDMapSize/
+  mDDMapType (filled from the row data), mBtnClearFilters and the sort buttons.
+- Clicks come back as UnrealScript calls on `H7MapSelectCntl`: `MapClicked(clickedMapIndex)` (also once after
+  AddMaps for the first row), `BtnContinueClicked(selectedListIndex, isCampaign)`, `BtnGenerateMapClicked()`,
+  `BtnBackClicked()` (→ ClosePopup: hides the window, shows the main menu). ModManager pre-hooks them while
+  `ui.showing`; Back is not blocked, it restores the window first.
+
+Other gotchas:
+- **GFxObjects get garbage collected**: the UObject wrappers from GetObject/AttachMovie are freed when no
+  UnrealScript object references them (the Flash clip stays). Never cache them across frames; keep the instance
+  name and `GetObject` again. Objects held by script vars (`cntl.mMainMenu`, `sel.mMapSelection`) are safe.
+- Hook `args` are by name (`args.clickedMapIndex`), not index.
+- `mBG`, `mBtnOK`, `mBlockLayer` of H7CustomDifficultyPopUp are not reachable via GetObject (nil).
+- An exec script that errors or is empty still gets renamed to `.done` and overwrites an older `.done` of the
+  same name — keep lab scripts in `tests\` and copy them in.
+- Ubisoft Connect restarts the game process once at launch: a watcher must not treat the first exit as the end.
+
+What does not work from Lua (Scaleform/UE3 limits found this session):
+- `GetObject` returns nil for members holding AS-created Arrays/Objects/Dictionaries (`mMapList.mMapItems`,
+  `mVisibleMaps`, `mSelectedMapListItem`, `mData`, `mMapDetails.mChildsAdded`, `Loca.mLocaDictionary`); it works
+  for display objects (timeline instances) and for objects Unreal created (`mPolledMaps`). `GetVariableObject
+  ("global.Loca")` returns the class, but not its statics. Invoke on mMapList's `clearList`/`sortByNameDown`
+  did nothing visible; `AddMaps` adds rows on top of existing ones (sorted by name) and selects the first row.
+- **The movie caches translations** (`Loca.mLocaDictionary`, static): `FlashLocalize(locaKey)` is asked once per
+  key and movie. Never override a shared key (VICTORY_CONDITIONS, LOSE_CONDITIONS, DESCRIPTION, CREATOR...):
+  the game's own map list keeps the override until restart. Row texts also go through it: all-caps values are
+  taken for keys and shown as `[VALUE]` when unknown.
+- Details panel: shows a Creator line ("Edytor kampanii", key CREATOR) only if `Creator` is set, victory/lose
+  lines only if those arrays are set; the list's 2nd column is `VictoryConditions[0]` ("-" if missing).
+- Status colors: not possible (rows unreachable); H7Label `htmlText` resets the font size.
+
+Next steps:
+1. Commit this batch on `feature/mods-menu` (ask the user), then push / open a PR (ask; `gh` not installed).
+2. Optional polish: keep the selection after Enable/Disable (would need a way to select a row by index);
+   localized captions for "Mods", "Enable", "Disable" (H7Loca has the game's language).
+3. More example mods / API work.
 
 ## Lua API (implemented)
 

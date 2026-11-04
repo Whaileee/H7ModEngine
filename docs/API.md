@@ -96,15 +96,20 @@ return {
     author = "You",
     description = "What the mod does.",
     load_after = { "OtherMod" }, -- load after these mods (if they are installed)
-    enabled = true,              -- false: the mod is skipped
+    enabled = true,              -- false: off until a player turns it on
+    category = "Combat",         -- shown (and filterable) in the Mods menu
+    hidden = false,              -- true: not listed in the in-game Mods menu
 }
 ```
 
 **Load order.** Mods load alphabetically by name, except that a mod is moved after every mod it lists in
 `load_after`. After all mods have loaded, the `mods_loaded` event fires.
 
-**Disabling.** Set `enabled = false` in the manifest, or list the mod in `H7ModEngine.ini`
-(see [Configuration](#configuration)).
+**Turning mods on and off.** Players use the **Mods** entry in the main menu (the bundled ModManager mod),
+which lists every mod with its description and an Enabled/Disabled toggle. A change applies at once: the mod
+loads or unloads on the next frame. The choice is stored in `H7ModEngine.ini` (see
+[Configuration](#configuration)) and overrides the manifest's `enabled`. Mods can do the same with
+`h7.set_mod_enabled(name, on)`; the `mod_toggled` event reports each change.
 
 **Each mod has its own globals.** Global variables you create stay inside your mod; reading a global you didn't
 create falls through to the shared environment (`h7`, `string`, `math`, `table`, ...). Two mods can both define
@@ -229,7 +234,7 @@ keep object references across maps, or check `is_valid()` first.
 | struct | live struct reference: `v.X` reads and `v.X = 1` writes the field in place |
 | `array<T>` | live array reference (see below) |
 | fixed array (`int X[4]`) | a Lua table copy; assign a table to write it |
-| delegate | `{object = ..., func = "Name"}` (read only) |
+| delegate | `{object = ..., func = "Name"}`; pass the same shape to a delegate parameter, e.g. `widget:AddEventListener("CLIK_click", {object = cntl, func = "Options"})` |
 
 Assigning an object to an object property checks its type. A struct property can be assigned a struct
 reference of the same type or a Lua table of fields: `obj.Location = {X = 0, Y = 0, Z = 100}`.
@@ -244,6 +249,18 @@ obelisks[1] = other                        -- replace an element
 obelisks:add(value)                        -- append; returns the new length
 obelisks:remove(2)                         -- remove element 2, shifting the rest down
 ```
+
+Assigning a Lua table (or another engine array) to an array property replaces its contents:
+`obj.mNames = {"a", "b"}`. The same works for array parameters of a function call; elements are converted like
+properties, so an array of structs takes a table of tables:
+
+```lua
+-- GFxObject.Invoke(string Member, array<ASValue> args)
+local AS = h7.enum("ASType")
+widget:Invoke("setTextColor", { { Type = AS.AS_Number, n = 0x9be37a } })
+```
+
+Leaving an array argument out passes an empty array.
 
 An array *returned by a function* is a plain Lua table copy instead (`player:GetHeroes()`), since the engine's
 copy is gone once the call returns. UnrealScript's `private`/`protected` don't apply: mods can read and write
@@ -357,6 +374,7 @@ h7.off(id)
 | `tick` | `dt` (seconds since the last frame) | Every frame |
 | `map_loaded` | map name (lowercase), e.g. `h7logoentry`, `councilhub` (main menu), `sce_sephinroth` | When a different map is active. Battles don't trigger it |
 | `mods_loaded` | number of mods | After all mods have loaded (also after `h7.reload()`) |
+| `mod_toggled` | mod name, `enabled` | After a mod was loaded or unloaded by `h7.set_mod_enabled` (the Mods menu) |
 
 Timers run on game time:
 
@@ -389,6 +407,9 @@ belongs to the mod, not to a savegame.
 | `h7.warn(...)` | `WARNING [MyMod] message` |
 | `h7.error(...)` | `ERROR [MyMod] message` |
 
+Hooks, event handlers and timers run as the mod that registered them: their log lines carry its name, and any
+hook, handler or timer they create belongs to that mod too (and is removed when it unloads).
+
 Errors inside hooks, event handlers and timers are caught and logged as `ERROR in hook ... (MyMod)` with a stack
 trace; the game keeps running and the hook stays active.
 
@@ -410,8 +431,9 @@ return hero, hero:GetMovementPoints()
 
 ```ini
 [Mods]
-; Comma-separated mod names to skip
-Disabled=DamageScale, HeroMovement
+; Comma-separated mod names, written by the in-game Mods menu. They override the manifests' enabled field.
+Enabled=DailyGold
+Disabled=HelloWorld
 
 [Dev]
 ; Write names.txt / objects.txt to dumps\ at startup (default 1)
@@ -435,17 +457,19 @@ DumpImage=0
 | `h7.hook(func, fn [, "pre" \| "post"])`, `h7.hook_post(func, fn)`, `h7.unhook(id)` | [Hooks](#hooks) |
 | `h7.on(event, fn)`, `h7.off(id)` | [Events](#events-and-timers) |
 | `h7.after(seconds, fn)`, `h7.every(seconds, fn)`, `h7.cancel(id)` | [Timers](#events-and-timers) |
-| `h7.mods()` | `{name, version, author, loaded}` for every mod |
+| `h7.mods()` | `{name, version, author, description, category, enabled, loaded, hidden}` for every installed mod (`enabled` but not `loaded`: it failed to load, see the log) |
+| `h7.set_mod_enabled(name, on)` | Turn a mod on or off; saved in the ini, applied on the next frame |
 | `h7.reload()` | Unload and reload all mods (on the next frame) |
 | `h7.exec(command)` | Run a console command |
 
 **Per mod**: `mod.name`, `mod.version`, `mod.author`, `mod.dir`, `mod.require(name)`, `mod.save(table)`,
 `mod.load()`, and an optional global `function on_unload()`.
 
-**Example mods** (in `mods\`; all except HelloWorld ship disabled; set `enabled = true` in their `mod.lua`):
+**Example mods** (in `mods\`; all except HelloWorld ship disabled; turn them on in the Mods menu):
 
 | Mod | Shows |
 |---|---|
+| ModManager | The main menu's Mods entry: adding Flash widgets to a game menu and routing their clicks |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |
@@ -458,5 +482,13 @@ DumpImage=0
 - Mods change the local game only. **Multiplayer is untested** and will likely desync when a mod changes
   gameplay.
 - Native functions: hooks get no arguments and can't block.
-- New mod folders and newly enabled mods need `h7.reload()` or a restart.
+- New mod folders need `h7.reload()` or a restart.
+- Flash objects (`GFxObject`) returned by `GetObject`/`AttachMovie` are freed by the engine's garbage
+  collector when no UnrealScript object holds them. Keep the clip's name and call `GetObject` again when you
+  need it, instead of storing the object.
+- `GetObject` only reaches display objects (named clips, buttons, labels) and objects created from Unreal
+  (`CreateObject`/`CreateArray`); members holding arrays or objects created by the movie's own ActionScript
+  return `nil`.
+- The game's Flash menus cache every translation they ask for (`H7FlashMovieCntl.FlashLocalize`) for the rest of
+  the session, so changing a translation through a hook also changes it everywhere else that key is used.
 - Mods run on the game thread: a slow hook slows the game down.

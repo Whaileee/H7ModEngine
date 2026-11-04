@@ -3,5 +3,6 @@ return {
     version = "1.0",
     author = "H7ModEngine",
     description = "Example: heroes earn more experience from combat (overriding a return value).",
-    enabled = false, -- example mod: set to true to try it
+    category = "Combat",
+    enabled = false, -- example mod: turn it on in the Mods menu
 }

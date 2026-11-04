@@ -13,7 +13,15 @@ lua_State* State();
 
 // Ownership tracking so a mod's hooks/handlers/timers are removed when it unloads.
 int CurrentModId();
+int SetCurrentModId(int id); // returns the previous id
 const std::string& ModName(int id);
+
+// Makes `id` the current mod while in scope: logs, hooks, handlers and timers created meanwhile belong to it.
+struct ModScope {
+    int saved;
+    explicit ModScope(int id) : saved(SetCurrentModId(id)) {}
+    ~ModScope() { SetCurrentModId(saved); }
+};
 void Report(const std::string& where, const std::string& error); // logs a Lua error with mod context
 
 // --- bindings.cpp ------------------------------------------------------------------

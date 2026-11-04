@@ -148,6 +148,23 @@ static void PushProp(lua_State* L, uintptr_t base, UObject prop, uint64_t frame)
 }
 
 static void WriteStructFromTable(lua_State* L, int idx, uintptr_t addr, UObject type);
+static int H_to_table(lua_State* L);
+
+// Frees an FString's or a dynamic array's buffer (and the strings in an array of strings) and empties it.
+static void FreeOwned(uintptr_t addr, PropKind kind, UObject prop) {
+    auto a = mem::ReadOr<ue3::TArrayRaw>(addr, {});
+    if (!a.data) return;
+    if (kind == PropKind::Array) {
+        PropInfo ip = ue3::Describe(ue3::PropInner(prop));
+        if (ip.kind == PropKind::Str)
+            for (int32_t i = 0; i < a.num; ++i) FreeOwned(a.data + (uintptr_t)i * ip.elementSize, PropKind::Str, 0);
+    } else if (kind != PropKind::Str) {
+        return;
+    }
+    EngineRealloc(reinterpret_cast<void*>(a.data), 0);
+    a = {};
+    mem::Write(reinterpret_cast<void*>(addr), &a, sizeof(a));
+}
 
 static void WriteElem(lua_State* L, int idx, uintptr_t addr, UObject prop, PropKind kind) {
     idx = lua_absindex(L, idx);
@@ -198,6 +215,54 @@ static void WriteElem(lua_State* L, int idx, uintptr_t addr, UObject prop, PropK
             luaL_checktype(L, idx, LUA_TTABLE);
             WriteStructFromTable(L, idx, addr, type);
         }
+        break;
+    }
+    case PropKind::Delegate: {
+        // {object = obj, func = "FunctionName"} (or nil to clear): an FScriptDelegate {UObject*, FName}.
+        struct { UObject object; ue3::FName func; } d{0, {0, 0}};
+        if (!lua_isnil(L, idx)) {
+            luaL_checktype(L, idx, LUA_TTABLE);
+            lua_getfield(L, idx, "object");
+            d.object = ToObject(L, -1);
+            lua_getfield(L, idx, "func");
+            const char* fn = luaL_checkstring(L, -1);
+            if (!d.object || !LookupField(ue3::ObjClass(d.object), fn))
+                luaL_error(L, "delegate target has no function '%s'", fn);
+            d.func = {ue3::FindNameIndex(fn), 0};
+            lua_pop(L, 2);
+        }
+        mem::Write((void*)addr, &d, sizeof(d));
+        break;
+    }
+    case PropKind::Array: {
+        // A Lua sequence (or another engine array) replaces the array's contents.
+        UObject inner = ue3::PropInner(prop);
+        PropInfo ip = ue3::Describe(inner);
+        int src = idx;
+        if (luaL_testudata(L, idx, kArray)) {
+            lua_pushcfunction(L, H_to_table);
+            lua_pushvalue(L, idx);
+            lua_call(L, 1, 1);
+            src = lua_gettop(L);
+        } else {
+            luaL_checktype(L, idx, LUA_TTABLE);
+        }
+        int32_t n = (int32_t)lua_rawlen(L, src);
+        FreeOwned(addr, PropKind::Array, prop);
+        ue3::TArrayRaw a{};
+        if (n > 0) {
+            void* data = EngineRealloc(nullptr, (size_t)n * ip.elementSize);
+            if (!data) luaL_error(L, "allocation failed");
+            memset(data, 0, (size_t)n * ip.elementSize);
+            a = {reinterpret_cast<uintptr_t>(data), n, n};
+        }
+        mem::Write((void*)addr, &a, sizeof(a));
+        for (int32_t i = 0; i < n; ++i) {
+            lua_rawgeti(L, src, i + 1);
+            if (!lua_isnil(L, -1)) WriteElem(L, -1, a.data + (uintptr_t)i * ip.elementSize, inner, ip.kind);
+            lua_pop(L, 1);
+        }
+        if (src != idx) lua_pop(L, 1);
         break;
     }
     default: luaL_error(L, "assigning %s properties is not supported", ue3::ObjName(ue3::ObjClass(prop)).c_str());
@@ -270,6 +335,9 @@ static int CallUFunction(lua_State* L) {
             lua_pop(L, 1);
         }
     }
+    // The caller owns the strings and arrays in the parameter buffer (ProcessEvent copies parameters back).
+    for (auto& p : params)
+        for (int i = 0; i < p.arrayDim; ++i) FreeOwned(base + p.offset + i * p.elementSize, p.kind, p.prop);
     return nret;
 }
 
@@ -764,6 +832,7 @@ static int WriteReturnThunk(lua_State* L) {
 static bool RunLuaHook(int ref, int mod, hooks::CallContext& ctx, bool post) {
     lua_State* L = State();
     if (!L) return false;
+    ModScope scope(mod);
     int top = lua_gettop(L);
     lua_pushcfunction(L, Traceback);
     int eh = lua_gettop(L);
