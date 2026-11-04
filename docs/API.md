@@ -530,6 +530,9 @@ DumpImage=0
 
 ## Reference
 
+The complete reference, with every parameter, return value and error, is in the
+[API reference](https://whaileee.github.io/H7ModEngine/reference/) (in this repository: `docs/reference/`). A summary:
+
 **h7**
 
 | | |

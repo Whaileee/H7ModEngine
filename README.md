@@ -77,6 +77,8 @@ The engine ships with these example mods:
 
 Start with **[docs/API.md](docs/API.md)**, the modder's reference: your first mod in five lines, the manifest,
 how to find the game function or property you want to change, hooks, events, saved data and the full `h7` API.
+The same guide and a complete **[API reference](https://whaileee.github.io/H7ModEngine/reference/)** are published
+for each release at <https://whaileee.github.io/H7ModEngine/>.
 
 A mod is at least a `main.lua`:
 
