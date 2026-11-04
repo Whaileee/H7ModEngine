@@ -22,7 +22,8 @@ Values coming from the engine are one of three reference types, plus plain Lua v
 | Struct reference | A live view of a struct inside an object, a struct or hook arguments | [Structs](objects.md#struct-references) |
 | Array reference | A live view of an UnrealScript `array<T>` | [Arrays](objects.md#array-references) |
 
-How every UnrealScript type is converted is in [Values and types](types.md).
+How every UnrealScript type is converted is in [Values and types](types.md). The game's own classes, whose
+properties and functions mods use through these references, are listed in [Game classes](../sdk/index.md).
 
 ## Index
 

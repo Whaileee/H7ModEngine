@@ -1,0 +1,3 @@
+{"package": "XAudio2", "classes": [
+{"name":"XAudio2Device","kind":"class","native_only":true,"package":"XAudio2"}
+]}

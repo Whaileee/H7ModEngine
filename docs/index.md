@@ -23,6 +23,7 @@ end)
 |---|---|
 | **[Modding guide](API.md)** | Installation, your first mod, the manifest, finding what to change, hooks, events, saved data. Read this first. |
 | **[API reference](reference/index.md)** | Every function, method, event and value of the Lua API, with parameters, return values and errors. |
+| **[Game classes](sdk/index.md)** | Every class the game loads, with its properties, functions, structs, enums and defaults: what mods read, call and hook. |
 | **[Engine development](DEVELOPMENT.md)** | Building the engine, its architecture, testing in game and extending the API. |
 
 This site is built from the documentation in the release it names (top left). The documentation for the code
