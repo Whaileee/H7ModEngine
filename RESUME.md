@@ -283,6 +283,51 @@ Next: skirmish/adventure map (town screen, recruiting, AI), save/load, H2 abilit
 unicorn blind, phoenix fire immunity), stat balance (Phoenix initiative low, Dwarf scaling capped at x3),
 H2 hero portraits/bios.
 
+## Mod settings + Mods button fix (2026-11-04, branch `feature/mod-settings`, verified in game)
+
+- Manifest `settings = { {key, label, description, type, default, min, max, step, options, reload}, ... }`;
+  values in the ini `[Mod.<name>]`; `mod.settings` proxy (read/assign/pairs), `h7.mod_settings`,
+  `h7.set_mod_setting`, event `setting_changed`; `reload = true` restarts the mod. `h7.mods()[i].settings` = count.
+  Example mods use settings (DailyGold gold, CombatXP/DamageScale/HeroMovement multipliers, DamageScale log,
+  HeroMovement who). `tests/settingstest.lua`: 13/13 OK.
+- ModManager: the map window's Generate Map button = Settings (mods with settings) / Default (settings view);
+  settings view rows: label, value, range, "Changed"; Continue = Change; Back = back to the mod list. Details panel
+  lists current values. Selection resets to row 1 after each change (rows unreachable: `mMapList.masked` and its
+  children are AS-created; `GetObject` returns nil).
+- Mods button in sub-menus: the movie hides its own buttons (`visible = false`) in sub-menus; ModManager copies
+  Options' visible/alpha/x to Mods every 0.1 s. Verified with real clicks.
+- `GFxObject:Invoke("GotoSPMenu")` etc. on the main menu does NOT open sub-menus; drive the UI with real input:
+  `tests/click.ps1 <x> <y>` (window pixels, as in shot.ps1 screenshots; brings the game to the front). Clicks
+  right after a list refill can be lost; wait ~2 s. Main menu buttons (2048x1080 window): Jeden gracz 1730,330;
+  Mods 1730,890; sub-menu Wstecz 1730,970; map window Back 240,1015, Continue 1810,1015, Generate 1025,978,
+  rows from y=224 every 49 px.
+
+### Settings panel (2026-11-04, follow-up on `feature/mod-settings`, verified in game)
+User wanted sliders/check boxes, the description in the picture frame and the settings below it. ModManager:
+- `panel.lua`: description = H7Label (multiline) in the frame (1366,128 452x456); hidden: mMapThumbnail,
+  mLblNoThumbnail, mMapDetails, mGenerateMap. Settings area 1342,640 (470 wide), 5 rows of 48 px.
+- Controls are clips from H7MapSelect's own library (no checkbox/slider *component* symbol exists there):
+  slider = `H7Slider_BG_Gold` (a 14x423 vertical bar, rotated -90) + `H7Slider_Gold_Thumb`; check box =
+  `H7GUICommandButton` (36 px, DisplaySelectState + alpha 0.35 when off); choices = `H7LeftArrow`/`H7RightArrow`
+  + H7Label. `H7DropDown` also attaches (AddItem API untested).
+- Input: Flash listeners on attached clips call back with EMPTY EventData (no type/target) and only for
+  clicks, so the panel ignores Flash events and hooks `Engine.Console.InputKey` (Key "LeftMouseButton", Event 0
+  pressed / 1 released / 2 repeat) and hit-tests `window:GetFloat("mouseX"/"mouseY")` (window coords = screen
+  pixels - 64 in x here). The press is handled on the next tick: at InputKey time Flash's mouse position is
+  still the old one. Slider drag follows the mouse in `tick`, saves on release.
+- Synthetic input: the game reads mouse movement as raw input; `SetCursorPos` alone doesn't move the game's
+  cursor. `tests/click.ps1` nudges with relative moves and drags with absolute VIRTUALDESK moves (the game
+  window is on a monitor with negative coordinates).
+- Number box (`control = "input"`, default for numbers without a range): H7TooltipBG frame + its own H7Label
+  (created after the frame so it draws on top; clips stack in creation order). Keys come from
+  Console.InputKey; key names are lower-case as the engine first registered them ("seven", "enter"), so the
+  panel compares lower-cased. A post-hook returning true marks keys as handled while editing (Escape then
+  doesn't close the window). `tests/keys.ps1 <keys>` types into the game (keybd_event works, unlike mouse).
+  H7DropDown as a box left a grey slot where its arrow was; don't reuse clip names across clip types
+  (ensure() returns the existing clip of that name).
+- Hot-reloading ModManager while the window is open loses the panel state; re-clicking the selected row
+  doesn't fire MapClicked (select another row first).
+
 ## Lua API (implemented)
 
 - Logging: `h7.log/warn/error`, `print` → `logs\engine.log` with mod prefix

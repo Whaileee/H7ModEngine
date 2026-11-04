@@ -11,6 +11,8 @@
 #include <lauxlib.h>
 #include <lualib.h>
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <map>
 #include <utility>
@@ -29,6 +31,18 @@ static const char* kVersion = "0.1.0";
 // Mods
 // ---------------------------------------------------------------------------------------
 
+// A setting the mod's manifest declares (`settings = { {key = ..., ...}, ... }`). Values are kept as text in
+// H7ModEngine.ini, section [Mod.<name>], and converted to the setting's type when Lua reads them.
+struct Setting {
+    std::string key, label, description;
+    std::string type;                // "bool" | "number" | "choice" | "text"
+    double min = -HUGE_VAL, max = HUGE_VAL, step = 0;
+    std::vector<std::string> options; // choice
+    std::string def, value;          // normalized text
+    bool reload = false;             // reload the mod when the value changes
+    std::string control;             // how menus should show it ("slider", "input", "arrows"; "" = their choice)
+};
+
 struct Mod {
     int id;
     std::string name;
@@ -41,6 +55,8 @@ struct Mod {
     bool defaultEnabled = true; // manifest `enabled`
     bool enabled = true;        // after the ini's [Mods] Enabled/Disabled lists
     bool hidden = false;        // manifest `hidden`: left out of mod lists shown to players
+    std::vector<Setting> settings;
+    bool pendingReload = false;  // a `reload` setting changed
     int envRef = LUA_NOREF;
     bool loaded = false;
     long long stamp = 0; // newest .lua write time, for hot reload
@@ -226,6 +242,133 @@ static std::string TableString(lua_State* L, int idx, const char* key, const std
     return v;
 }
 
+// --- Settings ---------------------------------------------------------------------------------------------
+
+static std::string FormatNumber(double v) {
+    char buf[64];
+    if (std::fabs(v) < 1e15 && v == std::floor(v)) snprintf(buf, sizeof(buf), "%lld", (long long)v);
+    else snprintf(buf, sizeof(buf), "%.10g", v);
+    return buf;
+}
+
+static std::string Lower(std::string s) {
+    for (auto& c : s) c = (char)tolower((unsigned char)c);
+    return s;
+}
+
+// The canonical text of `in` for setting `st`, or false if it isn't a valid value. Numbers are clamped to
+// min/max and snapped to `step`.
+static bool Normalize(const Setting& st, const std::string& in, std::string& out) {
+    if (st.type == "bool") {
+        std::string l = Lower(in);
+        if (l == "true" || l == "1" || l == "yes" || l == "on") return out = "true", true;
+        if (l == "false" || l == "0" || l == "no" || l == "off") return out = "false", true;
+        return false;
+    }
+    if (st.type == "number") {
+        char* end = nullptr;
+        double v = strtod(in.c_str(), &end);
+        if (end == in.c_str() || !std::isfinite(v)) return false;
+        if (st.step > 0) {
+            double base = std::isfinite(st.min) ? st.min : 0;
+            v = base + std::round((v - base) / st.step) * st.step;
+        }
+        v = std::fmin(std::fmax(v, st.min), st.max);
+        return out = FormatNumber(v), true;
+    }
+    if (st.type == "choice") {
+        for (auto& o : st.options)
+            if (_stricmp(o.c_str(), in.c_str()) == 0) return out = o, true;
+        return false;
+    }
+    return out = in, true;
+}
+
+static std::wstring SettingsSection(const Mod& m) { return Widen("Mod." + m.name); }
+
+static void ReadSettingValues(Mod& m) {
+    for (auto& st : m.settings) {
+        wchar_t buf[1024] = {};
+        GetPrivateProfileStringW(SettingsSection(m).c_str(), Widen(st.key).c_str(), L"\x01", buf, 1024,
+                                 EnginePath(L"H7ModEngine.ini").c_str());
+        std::string raw = Narrow(buf), v;
+        if (raw == "\x01") {
+            st.value = st.def;
+        } else if (Normalize(st, raw, v)) {
+            st.value = v;
+        } else {
+            st.value = st.def;
+            Log("Mod %s: setting %s has an invalid value '%s' in the ini; using %s", m.name.c_str(), st.key.c_str(),
+                raw.c_str(), st.def.c_str());
+        }
+    }
+}
+
+// Lua value at idx -> text (booleans and numbers as Normalize expects them)
+static std::string ValueText(lua_State* L, int idx) {
+    switch (lua_type(L, idx)) {
+    case LUA_TBOOLEAN: return lua_toboolean(L, idx) ? "true" : "false";
+    case LUA_TNUMBER: return FormatNumber(lua_tonumber(L, idx));
+    case LUA_TSTRING: return lua_tostring(L, idx);
+    default: return "";
+    }
+}
+
+static void PushSettingValue(lua_State* L, const Setting& st, const std::string& text) {
+    if (st.type == "bool") {
+        lua_pushboolean(L, text == "true");
+    } else if (st.type == "number") {
+        double v = strtod(text.c_str(), nullptr);
+        if (v == std::floor(v) && std::fabs(v) < 1e15) lua_pushinteger(L, (lua_Integer)v);
+        else lua_pushnumber(L, v);
+    } else {
+        lua_pushstring(L, text.c_str());
+    }
+}
+
+// Parses one entry of the manifest's `settings` list (the table at the top of the stack).
+static bool ParseSetting(lua_State* L, Mod& m, Setting& st) {
+    int t = lua_gettop(L);
+    st.key = TableString(L, t, "key", "");
+    if (st.key.empty()) return Log("Mod %s: a setting without `key` is ignored", m.name.c_str()), false;
+    st.label = TableString(L, t, "label", st.key);
+    st.description = TableString(L, t, "description", "");
+    lua_getfield(L, t, "options");
+    if (lua_istable(L, -1)) {
+        for (int i = 1; lua_rawgeti(L, -1, i) != LUA_TNIL; ++i) {
+            st.options.push_back(ValueText(L, -1));
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1); // the nil
+    }
+    lua_pop(L, 1);
+    lua_getfield(L, t, "default");
+    int defType = lua_type(L, -1);
+    std::string def = ValueText(L, -1);
+    lua_pop(L, 1);
+    std::string inferred = defType == LUA_TBOOLEAN ? "bool" : defType == LUA_TNUMBER ? "number"
+                           : !st.options.empty() ? "choice" : "text";
+    st.type = TableString(L, t, "type", inferred);
+    if (st.type != "bool" && st.type != "number" && st.type != "choice" && st.type != "text")
+        return Log("Mod %s: setting %s has unknown type '%s'", m.name.c_str(), st.key.c_str(), st.type.c_str()), false;
+    if (st.type == "choice" && st.options.empty())
+        return Log("Mod %s: choice setting %s has no options", m.name.c_str(), st.key.c_str()), false;
+    lua_getfield(L, t, "min"); if (lua_isnumber(L, -1)) st.min = lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, t, "max"); if (lua_isnumber(L, -1)) st.max = lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, t, "step"); if (lua_isnumber(L, -1)) st.step = lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, t, "reload"); st.reload = lua_toboolean(L, -1); lua_pop(L, 1);
+    st.control = TableString(L, t, "control", "");
+    std::string v;
+    if (defType == LUA_TNIL || !Normalize(st, def, v)) {
+        v = st.type == "bool" ? "false" : st.type == "number" ? FormatNumber(std::isfinite(st.min) ? st.min : 0)
+            : st.type == "choice" ? st.options[0] : "";
+        if (defType != LUA_TNIL)
+            Log("Mod %s: setting %s has an invalid default; using %s", m.name.c_str(), st.key.c_str(), v.c_str());
+    }
+    st.def = st.value = v;
+    return true;
+}
+
 // Reads mods/<dir>/mod.lua (optional manifest returning a table). False if the manifest fails to run.
 static bool ReadManifest(Mod& m) {
     fs::path manifest = m.dir / "mod.lua";
@@ -257,7 +400,17 @@ static bool ReadManifest(Mod& m) {
         lua_pop(L, 1);
         lua_getfield(L, -1, "hidden");
         m.hidden = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, -1, "settings");
+        if (lua_istable(L, -1)) {
+            for (int i = 1; lua_rawgeti(L, -1, i) == LUA_TTABLE; ++i) {
+                Setting st;
+                if (ParseSetting(L, m, st)) m.settings.push_back(std::move(st));
+                lua_pop(L, 1);
+            }
+        }
         lua_settop(L, 0);
+        ReadSettingValues(m);
         return true;
     }
     lua_settop(L, 0);
@@ -360,6 +513,126 @@ static int Mod_load(lua_State* L) {
     return 1;
 }
 
+static Mod* FindMod(const std::string& name) {
+    for (auto& m : g_mods)
+        if (m.name == name) return &m;
+    return nullptr;
+}
+static Mod* FindModById(int id) {
+    for (auto& m : g_mods)
+        if (m.id == id) return &m;
+    return nullptr;
+}
+static Setting* FindSetting(Mod& m, const std::string& key) {
+    for (auto& st : m.settings)
+        if (st.key == key) return &st;
+    return nullptr;
+}
+
+// Sets a setting from the Lua value at idx: validated, saved in the ini, `setting_changed` fires, and a
+// `reload` setting reloads the mod on the next frame. Pushes the stored value.
+static int SetSetting(lua_State* L, Mod& m, const std::string& key, int idx) {
+    Setting* st = FindSetting(m, key);
+    if (!st) return luaL_error(L, "mod %s has no setting '%s'", m.name.c_str(), key.c_str());
+    std::string v;
+    if (!Normalize(*st, ValueText(L, idx), v))
+        return luaL_error(L, "invalid value for %s.%s (%s)", m.name.c_str(), key.c_str(), st->type.c_str());
+    bool changed = v != st->value;
+    st->value = v;
+    WritePrivateProfileStringW(SettingsSection(m).c_str(), Widen(key).c_str(), Widen(v).c_str(),
+                               EnginePath(L"H7ModEngine.ini").c_str());
+    if (changed) {
+        if (st->reload && m.loaded) m.pendingReload = true;
+        std::string name = m.name; // handlers may change g_mods
+        lua_pushstring(L, name.c_str());
+        lua_pushstring(L, key.c_str());
+        PushSettingValue(L, *st, v);
+        EmitEvent("setting_changed", 3);
+    }
+    Mod* again = FindMod(m.name);
+    Setting* now = again ? FindSetting(*again, key) : nullptr;
+    if (now) PushSettingValue(L, *now, now->value);
+    else lua_pushnil(L);
+    return 1;
+}
+
+// mod.settings: reads give the current values, writes change them (like h7.set_mod_setting), pairs() lists them.
+static int Settings_index(lua_State* L) {
+    Mod* m = FindModById((int)lua_tointeger(L, lua_upvalueindex(1)));
+    Setting* st = m ? FindSetting(*m, luaL_checkstring(L, 2)) : nullptr;
+    if (!st) return lua_pushnil(L), 1;
+    PushSettingValue(L, *st, st->value);
+    return 1;
+}
+static int Settings_newindex(lua_State* L) {
+    Mod* m = FindModById((int)lua_tointeger(L, lua_upvalueindex(1)));
+    if (!m) return luaL_error(L, "the mod is no longer loaded");
+    return SetSetting(L, *m, luaL_checkstring(L, 2), 3);
+}
+static int Settings_pairs(lua_State* L) {
+    Mod* m = FindModById((int)lua_tointeger(L, lua_upvalueindex(1)));
+    lua_getglobal(L, "next");
+    lua_newtable(L);
+    if (m)
+        for (auto& st : m->settings) {
+            PushSettingValue(L, st, st.value);
+            lua_setfield(L, -2, st.key.c_str());
+        }
+    lua_pushnil(L);
+    return 3;
+}
+static void PushSettingsProxy(lua_State* L, int modId) {
+    lua_newtable(L);
+    lua_createtable(L, 0, 3);
+    lua_pushinteger(L, modId); lua_pushcclosure(L, Settings_index, 1); lua_setfield(L, -2, "__index");
+    lua_pushinteger(L, modId); lua_pushcclosure(L, Settings_newindex, 1); lua_setfield(L, -2, "__newindex");
+    lua_pushinteger(L, modId); lua_pushcclosure(L, Settings_pairs, 1); lua_setfield(L, -2, "__pairs");
+    lua_setmetatable(L, -2);
+}
+
+// h7.mod_settings(name) -> { {key, label, description, type, value, default, min, max, step, options, reload,
+//                              control}, ... }
+static int H_mod_settings(lua_State* L) {
+    Mod* m = FindMod(luaL_checkstring(L, 1));
+    if (!m) return luaL_error(L, "unknown mod '%s'", lua_tostring(L, 1));
+    lua_createtable(L, (int)m->settings.size(), 0);
+    int i = 0;
+    for (auto& st : m->settings) {
+        lua_createtable(L, 0, 11);
+        lua_pushstring(L, st.key.c_str()); lua_setfield(L, -2, "key");
+        lua_pushstring(L, st.label.c_str()); lua_setfield(L, -2, "label");
+        lua_pushstring(L, st.description.c_str()); lua_setfield(L, -2, "description");
+        lua_pushstring(L, st.type.c_str()); lua_setfield(L, -2, "type");
+        PushSettingValue(L, st, st.value); lua_setfield(L, -2, "value");
+        PushSettingValue(L, st, st.def); lua_setfield(L, -2, "default");
+        if (st.type == "number") {
+            if (std::isfinite(st.min)) { lua_pushnumber(L, st.min); lua_setfield(L, -2, "min"); }
+            if (std::isfinite(st.max)) { lua_pushnumber(L, st.max); lua_setfield(L, -2, "max"); }
+            if (st.step > 0) { lua_pushnumber(L, st.step); lua_setfield(L, -2, "step"); }
+        }
+        if (!st.options.empty()) {
+            lua_createtable(L, (int)st.options.size(), 0);
+            for (size_t k = 0; k < st.options.size(); ++k) {
+                lua_pushstring(L, st.options[k].c_str());
+                lua_rawseti(L, -2, (lua_Integer)k + 1);
+            }
+            lua_setfield(L, -2, "options");
+        }
+        lua_pushboolean(L, st.reload); lua_setfield(L, -2, "reload");
+        if (!st.control.empty()) { lua_pushstring(L, st.control.c_str()); lua_setfield(L, -2, "control"); }
+        lua_rawseti(L, -2, ++i);
+    }
+    return 1;
+}
+
+// h7.set_mod_setting(name, key, value) -> the stored value (clamped/snapped)
+static int H_set_mod_setting(lua_State* L) {
+    Mod* m = FindMod(luaL_checkstring(L, 1));
+    if (!m) return luaL_error(L, "unknown mod '%s'", lua_tostring(L, 1));
+    luaL_checkany(L, 3);
+    return SetSetting(L, *m, luaL_checkstring(L, 2), 3);
+}
+
 static void UnloadMod(Mod& m) {
     if (!m.loaded) return;
     lua_State* L = g_L;
@@ -415,6 +688,8 @@ static void LoadMod(Mod& m) {
     lua_pushvalue(L, env); lua_pushcclosure(L, Mod_require, 1); lua_setfield(L, -2, "require");
     lua_pushvalue(L, -1); lua_pushcclosure(L, Mod_save, 1); lua_setfield(L, -2, "save");
     lua_pushvalue(L, -1); lua_pushcclosure(L, Mod_load, 1); lua_setfield(L, -2, "load");
+    PushSettingsProxy(L, m.id);
+    lua_setfield(L, -2, "settings");
     lua_setfield(L, env, "mod");
 
     lua_pushvalue(L, env);
@@ -533,6 +808,7 @@ static int H_mods(lua_State* L) {
         lua_pushboolean(L, m.enabled); lua_setfield(L, -2, "enabled");
         lua_pushboolean(L, m.loaded); lua_setfield(L, -2, "loaded");
         lua_pushboolean(L, m.hidden); lua_setfield(L, -2, "hidden");
+        lua_pushinteger(L, (lua_Integer)m.settings.size()); lua_setfield(L, -2, "settings");
         lua_rawseti(L, -2, ++i);
     }
     return 1;
@@ -589,7 +865,8 @@ static void CreateState() {
     lua_setfield(g_L, -2, "version");
     const luaL_Reg fns[] = {
         {"on", H_on}, {"off", H_off}, {"after", H_after}, {"every", H_every}, {"cancel", H_cancel},
-        {"reload", H_reload}, {"mods", H_mods}, {"set_mod_enabled", H_set_mod_enabled}, {nullptr, nullptr},
+        {"reload", H_reload}, {"mods", H_mods}, {"set_mod_enabled", H_set_mod_enabled},
+        {"mod_settings", H_mod_settings}, {"set_mod_setting", H_set_mod_setting}, {nullptr, nullptr},
     };
     luaL_setfuncs(g_L, fns, 0);
     lua_setglobal(g_L, "h7");
@@ -661,6 +938,15 @@ void OnGameTick(float dt, uintptr_t viewport) {
     if (g_toggled) {
         g_toggled = false;
         ApplyToggles();
+    }
+
+    for (auto& m : g_mods) {
+        if (!m.pendingReload) continue;
+        m.pendingReload = false;
+        if (!m.loaded) continue;
+        Log("Reloading mod %s (setting changed)", m.name.c_str());
+        UnloadMod(m);
+        LoadMod(m);
     }
 
     if (g_reloadAll) {

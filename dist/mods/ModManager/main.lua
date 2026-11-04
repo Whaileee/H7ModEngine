@@ -1,19 +1,24 @@
--- ModManager: a "Mods" entry in the main menu that lists every mod with its description and lets players
--- enable or disable them. The list is the game's own map selection window (H7MapSelect movie), filled with
--- mods instead of maps while it is opened from here; everything changed in it is put back when it closes.
+-- ModManager: a "Mods" entry in the main menu that lists every mod and lets players enable or disable them and
+-- change their settings. The list is the game's own map selection window (H7MapSelect movie), filled with mods
+-- instead of maps while it is opened from here; everything changed in it is put back when it closes.
+--
+-- Left: one row per mod (name, version, category, status). Continue = Enable/Disable.
+-- Right (panel.lua): the selected mod's description in the picture frame, its settings as sliders, check boxes
+-- and arrows below it, numbers that are typed in a number box. Changes are saved at once.
 
 local Obj = h7.find_class("GFxUI.GFxObject")
 local Clik = h7.find_class("GFxUI.GFxClikWidget")
 local SELECT = "MMH7Game.H7MapSelectCntl."
+local panel = mod.require("panel")
 
 -- Column headers of the map list. Rows fill the columns from their Name, VictoryConditions[0], PlayerCount, Size
--- and Type fields. VictoryConditions is left out: the details panel would list it as "victory conditions", and
--- renaming that caption is cached by the movie for the game's own map list too. So the second column stays empty
--- and the author is shown as the details' "Creator".
+-- and Type fields. VictoryConditions is left out (the second column stays empty): renaming its caption would be
+-- cached by the movie for the game's own map list too.
 local HEADERS = { mLblMapName = "Mod", mLblVictoryCondition = "", mLblPlayers = "Version", mLblMapSize = "Category",
     mLblMapType = "Status" }
--- Parts of the window that mods don't use. The picture frame shows the game's "no picture" text instead.
-local UNUSED = { "mMapThumbnail", "mGenerateMap", "mMapList.mDDCondition" }
+-- Parts of the window that mods don't use: the picture, its "no picture" text, the map details (the panel takes
+-- their place), Generate Map and the second column's filter.
+local UNUSED = { "mMapThumbnail", "mLblNoThumbnail", "mMapDetails", "mGenerateMap", "mMapList.mDDCondition" }
 
 -- State that has to survive reloads of this mod lives as long as the main menu.
 _G.__modmanager = _G.__modmanager or {}
@@ -44,11 +49,6 @@ local function mod_by_name(name)
     end
 end
 
-local function set_continue_label(enabled)
-    local b = child(window(), "mBtnContinue")
-    if b then b:SetString("text", enabled and "Disable" or "Enable") end
-end
-
 -- Changes a window part, remembering its original value the first time (once per game session), so restore()
 -- puts the window back even after a reload of this mod or a failed restore.
 local function change(path, field, value, kind)
@@ -64,6 +64,7 @@ end
 
 local function restore()
     ui.showing = false
+    pcall(panel.hide_all)
     for _, s in pairs(ui.originals or {}) do
         local ok, err = pcall(function()
             local o = child(window(), s.path)
@@ -73,8 +74,19 @@ local function restore()
     end
 end
 
--- Row texts go through the movie's localization: all-caps words would be taken for keys.
-local function fill(sel, list)
+-- Rows can't be changed once added, so enabling or disabling a mod fills the list again (the selection goes back
+-- to the first row; AddMaps sorts the rows by name). Row texts go through the movie's localization: all-caps
+-- words would be taken for keys.
+local function fill()
+    local sel = select_cntl()
+    local list = sel.mMapSelection
+    list:Reset()
+    list:Update(sel.mMapThumbnail)
+    ui.showing = true
+    change("mLblTitle", "text", "Mods", "String")
+    for key, text in pairs(HEADERS) do change(key, "text", text, "String") end
+    for _, key in ipairs(UNUSED) do change(key, "visible", false, "Bool") end
+    change("mBtnContinue", "text", child(list, "mBtnContinue"):GetString("text"), "String") -- set per row
     local rows = sel:CreateArray()
     ui.rows = {} -- row index (from 0, as the window reports it) -> mod name
     local n = 0
@@ -83,8 +95,6 @@ local function fill(sel, list)
             local o = sel:CreateObject("Object", Obj)
             o:SetInt("Index", n)
             o:SetString("Name", m.name)
-            o:SetString("Creator", m.author ~= "" and m.author or "-")
-            o:SetString("Description", m.description)
             o:SetString("PlayerCount", m.version ~= "" and m.version or "-")
             o:SetString("Size", m.category ~= "" and m.category or "-")
             o:SetString("Type", status_of(m))
@@ -94,52 +104,44 @@ local function fill(sel, list)
         end
     end
     list:SetObject("mPolledMaps", rows)
-    list:Invoke("AddMaps") -- selects the first row
+    list:Invoke("AddMaps") -- selects the first row (MapClicked)
     list:Invoke("ListingMapDone")
     h7.log(("Mods window: %d mods"):format(n))
 end
 
 local function open()
-    local sel = select_cntl()
-    local list = sel.mMapSelection
     ui.cntl.mMainMenu:SetVisibleSave(false)
-    list:Reset()
-    list:Update(sel.mMapThumbnail)
-    ui.showing = true
-    change("mLblTitle", "text", "Mods", "String")
-    for key, text in pairs(HEADERS) do change(key, "text", text, "String") end
-    for _, key in ipairs(UNUSED) do change(key, "visible", false, "Bool") end
-    change("mLblNoThumbnail", "visible", true, "Bool")
-    local continue = child(list, "mBtnContinue")
-    change("mBtnContinue", "text", continue:GetString("text"), "String") -- set per row by set_continue_label
-    fill(sel, list)
+    fill()
+end
+
+-- A row was selected: its description and settings on the right, Enable/Disable on Continue.
+local function on_row(index)
+    ui.selected = index
+    local m = ui.rows and mod_by_name(ui.rows[index])
+    local b = child(window(), "mBtnContinue")
+    if b then b:SetString("text", (m and m.enabled) and "Disable" or "Enable") end
+    panel.show(m)
 end
 
 -- The window reports clicks to its controller; while it shows mods they are handled here instead.
 h7.hook(SELECT .. "MapClicked", function(self, args)
     if not ui.showing then return end
-    local m = mod_by_name(ui.rows[args.clickedMapIndex])
-    if m then set_continue_label(m.enabled) end
+    on_row(args.clickedMapIndex)
     return true -- no map thumbnail to load
 end)
 
--- Continue turns the selected mod on or off.
 h7.hook(SELECT .. "BtnContinueClicked", function(self, args)
     if not ui.showing then return end
     local m = mod_by_name(ui.rows[args.selectedListIndex])
-    if m then
-        h7.set_mod_enabled(m.name, not m.enabled)
-        set_continue_label(not m.enabled)
-    end
+    if m then h7.set_mod_enabled(m.name, not m.enabled) end -- the list is filled again on mod_toggled
     return true -- don't start a map
 end)
 
--- Rows can't be changed once added, so the list is filled again with the new status (the selection goes back
--- to the first row).
 h7.on("mod_toggled", function()
-    if not ui.showing then return end
-    restore()
-    open()
+    if ui.showing then
+        restore()
+        fill()
+    end
 end)
 
 h7.hook(SELECT .. "BtnGenerateMapClicked", function()
@@ -152,6 +154,33 @@ h7.hook(SELECT .. "BtnBackClicked", function()
 end)
 h7.hook(SELECT .. "Update", function()
     if ui.showing then restore() end -- the game opens the window for maps
+end)
+
+-- Mouse and keyboard for the settings controls (Flash doesn't report which of our clips was clicked). While a
+-- number box is being edited it takes the keys; the post-hook then reports them as handled, so the game and the
+-- menu don't act on them (Escape would close the window).
+h7.hook("Engine.Console.InputKey", function(console, args)
+    ui.key_used = false
+    if not ui.showing then return end
+    if args.Key == "LeftMouseButton" then
+        if args.Event == panel.PRESSED then
+            pcall(panel.press)
+        elseif args.Event == panel.RELEASED then
+            pcall(panel.release)
+        end
+        return
+    end
+    local ok, used = pcall(panel.key, args.Key, args.Event)
+    ui.key_used = ok and used
+end)
+h7.hook_post("Engine.Console.InputKey", function(console, args, handled)
+    if ui.key_used then
+        ui.key_used = false
+        return true
+    end
+end)
+h7.on("tick", function()
+    if ui.showing then pcall(panel.tick) end
 end)
 
 -- The Mods button in the main menu. Its clicks arrive at H7MainMenuCntl.Options without event data, so the
@@ -170,6 +199,21 @@ h7.hook("MMH7Game.H7MainMenuCntl.Options", function(cntl, args)
     end
 end)
 
+-- The main menu's sub-menus (single player, multiplayer, extras...) hide the movie's own buttons, which the movie
+-- tracks in a list our button isn't in. So the Mods button copies the Options button's visibility,
+-- transparency and horizontal position.
+local function follow_options()
+    local cntl = ui.cntl
+    if not (cntl and cntl:is_valid()) then return end
+    local menu = cntl.mMainMenu
+    local options, mods = child(menu, "mBtnOptions"), child(menu, "mBtnMods")
+    if not (options and mods) then return end
+    local visible, alpha, x = options:GetBool("visible"), options:GetFloat("alpha"), options:GetFloat("x")
+    if mods:GetBool("visible") ~= visible then mods:SetBool("visible", visible) end
+    if mods:GetFloat("alpha") ~= alpha then mods:SetFloat("alpha", alpha) end
+    if mods:GetFloat("x") ~= x then mods:SetFloat("x", x) end
+end
+
 -- Adds the Mods button to the main menu: Extras and Options move up into the free slot above them, Mods takes
 -- Options' place and Quit stays at the bottom of the frame.
 local function install()
@@ -181,6 +225,7 @@ local function install()
         ui.cntl = cntl
     end
     ui.open = open -- for tests\modwindow_autotest.lua
+    ui.panel = panel
     if not child(menu, "mBtnMods") then
         local extras, options = child(menu, "mBtnExtras"), child(menu, "mBtnOptions")
         local step = options:GetFloat("y") - extras:GetFloat("y")
@@ -195,6 +240,9 @@ local function install()
 end
 
 h7.on("map_loaded", function(map)
-    if map == "councilhub" then h7.after(1, install) end
+    if map == "councilhub" then h7.after(1, install) else ui.cntl = nil end
+end)
+h7.every(0.1, function()
+    if ui.cntl then pcall(follow_options) end
 end)
 install() -- already at the main menu (hot reload)
