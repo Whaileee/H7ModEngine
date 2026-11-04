@@ -3,6 +3,7 @@
 #include "../core/log.h"
 #include "../core/memory.h"
 #include "../ue3/core.h"
+#include "../ue3/factory.h"
 #include "../ue3/hooks.h"
 #include "../ue3/reflection.h"
 #include "../engine/paths.h"
@@ -15,6 +16,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <utility>
 
 namespace h7::lua {
 
@@ -193,8 +195,9 @@ static void WriteElem(lua_State* L, int idx, uintptr_t addr, UObject prop, PropK
     case PropKind::Name: {
         const char* s = luaL_checkstring(L, idx);
         int32_t n = ue3::FindNameIndex(s);
-        if (n < 0) luaL_error(L, "name '%s' does not exist in the engine name table", s);
         ue3::FName fn{n, 0};
+        if (n < 0) fn = ue3::MakeName(s); // adds the name (needs the object factory)
+        if (fn.index < 0) luaL_error(L, "name '%s' does not exist in the engine name table", s);
         mem::Write((void*)addr, &fn, 8);
         break;
     }
@@ -625,6 +628,115 @@ static int H_first(lua_State* L) {
     return 1;
 }
 
+
+// ---------------------------------------------------------------------------------------
+// Creating objects
+// ---------------------------------------------------------------------------------------
+
+static constexpr uint64_t kKeepFlags = ue3::RF_Public | ue3::RF_Standalone | ue3::RF_ArchetypeObject;
+
+static uint64_t ObjFlags(UObject o) { return mem::ReadOr<uint64_t>(o + ue3::L.objFlags, 0); }
+
+// The object called `name` directly inside `outer` (any class), or 0.
+static UObject FindInOuter(UObject outer, const std::string& name) {
+    int32_t idx = ue3::FindNameIndex(name);
+    if (idx < 0) return 0;
+    for (int32_t i = 0, n = ue3::ObjectCount(); i < n; ++i) {
+        UObject o = ue3::ObjectAt(i);
+        if (o && ue3::ObjOuter(o) == outer && ue3::ObjFName(o).index == idx && ue3::ObjFName(o).number == 0) return o;
+    }
+    return 0;
+}
+
+static UObject ConstructOrError(lua_State* L, UObject cls, UObject outer, const std::string& name, uint64_t flags,
+                                UObject tmpl) {
+    std::string err;
+    UObject o = ue3::ConstructObject(cls, outer, name, flags, tmpl, err);
+    if (!o) luaL_error(L, "could not create %s '%s': %s", ue3::ObjName(cls).c_str(), name.c_str(), err.c_str());
+    return o;
+}
+
+// h7.new_object(class, {name=, outer=, template=, flags=, archetype=, replace=}) -> object
+// Fails if `outer` already holds an object with that name, unless replace = true (the engine then reconstructs
+// it in place: same address, properties reset).
+static int H_new_object(lua_State* L) {
+    UObject cls = ClassArg(L, 1);
+    std::string name;
+    UObject outer = 0, tmpl = 0;
+    uint64_t flags = ue3::RF_Public | ue3::RF_Standalone;
+    bool replace = false;
+    if (!lua_isnoneornil(L, 2)) {
+        luaL_checktype(L, 2, LUA_TTABLE);
+        if (lua_getfield(L, 2, "name") != LUA_TNIL) name = luaL_checkstring(L, -1);
+        if (lua_getfield(L, 2, "outer") != LUA_TNIL) outer = CheckValidObject(L, -1);
+        if (lua_getfield(L, 2, "template") != LUA_TNIL) tmpl = CheckValidObject(L, -1);
+        if (lua_getfield(L, 2, "flags") != LUA_TNIL) flags = (uint64_t)luaL_checkinteger(L, -1);
+        if (lua_getfield(L, 2, "archetype") != LUA_TNIL && lua_toboolean(L, -1)) flags |= ue3::RF_ArchetypeObject;
+        if (lua_getfield(L, 2, "replace") != LUA_TNIL) replace = lua_toboolean(L, -1);
+        lua_pop(L, 6);
+    }
+    if (!name.empty() && !replace) {
+        UObject where = outer ? outer : ue3::TransientPackage();
+        if (UObject existing = FindInOuter(where, name))
+            luaL_error(L, "%s already exists (pass replace = true to reconstruct it)", ue3::ObjFullName(existing).c_str());
+    }
+    PushObject(L, ConstructOrError(L, cls, outer, name, flags, tmpl));
+    return 1;
+}
+
+// h7.clone(source, name [, outer [, extra_flags]]) -> object, created
+// A copy of `source` (same class, properties copied from it) called `name` inside `outer` (default: the transient
+// package). Archetypes stay archetypes, so the copy can be used wherever the game expects a template. If `outer`
+// already holds an object called `name` of the same class it is returned instead (created = false), which makes
+// mod code safe to run again after a hot reload.
+static int H_clone(lua_State* L) {
+    UObject src = CheckValidObject(L, 1);
+    std::string name = luaL_checkstring(L, 2);
+    UObject outer = lua_isnoneornil(L, 3) ? ue3::TransientPackage() : CheckValidObject(L, 3);
+    UObject cls = ue3::ObjClass(src);
+    if (UObject existing = FindInOuter(outer, name)) {
+        if (ue3::ObjClass(existing) != cls)
+            luaL_error(L, "%s already exists with another class", ue3::ObjFullName(existing).c_str());
+        PushObject(L, existing);
+        lua_pushboolean(L, 0);
+        return 2;
+    }
+    uint64_t flags = (ObjFlags(src) & kKeepFlags) | ue3::RF_Public | ue3::RF_Standalone;
+    if (!lua_isnoneornil(L, 4)) flags |= (uint64_t)luaL_checkinteger(L, 4);
+    PushObject(L, ConstructOrError(L, cls, outer, name, flags, src));
+    lua_pushboolean(L, 1);
+    return 2;
+}
+
+// h7.package(name) -> the top-level package `name`, created if it doesn't exist. Objects created inside it get
+// stable path names ("Name.Object"), which is what save games store.
+static int H_package(lua_State* L) {
+    std::string name = luaL_checkstring(L, 1);
+    UObject cls = ue3::FindClass("Core.Package");
+    if (!cls) luaL_error(L, "Core.Package not found");
+    if (UObject p = ue3::FindObject("Package " + name)) {
+        if (!ue3::ObjOuter(p)) return PushObject(L, p), 1;
+    }
+    std::string err;
+    UObject p = ue3::ConstructTopLevel(cls, name, ue3::RF_Public | ue3::RF_Standalone, err);
+    if (!p) luaL_error(L, "could not create package '%s': %s", name.c_str(), err.c_str());
+    PushObject(L, p);
+    return 1;
+}
+
+// h7.name(str) -> str; adds str to the engine name table (so it can be used as an FName)
+static int H_name(lua_State* L) {
+    const char* s = luaL_checkstring(L, 1);
+    if (ue3::FindNameIndex(s) < 0 && ue3::MakeName(s).index < 0) luaL_error(L, "could not create name '%s'", s);
+    lua_pushstring(L, s);
+    return 1;
+}
+
+static int H_can_create(lua_State* L) {
+    lua_pushboolean(L, ue3::FactoryAvailable());
+    return 1;
+}
+
 static int H_enum(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
     UObject e = ue3::FindObject(std::string("Enum ") + name);
@@ -699,7 +811,9 @@ static int H_to_table(lua_State* L) {
         for (int i = 0; i < a.num; ++i) {
             lua_pushcfunction(L, H_to_table);
             PushElem(L, a.data + i * p.elementSize, r->inner, p.kind, r->frame);
-            lua_call(L, 1, 1);
+            // objects stay as references (expanding them recursed through object graphs: C stack overflow)
+            if (!luaL_testudata(L, -1, kObj)) lua_call(L, 1, 1);
+            else lua_remove(L, -2);
             lua_rawseti(L, -2, i + 1);
         }
         return 1;
@@ -960,7 +1074,8 @@ void OpenBindings(lua_State* L) {
         {"find", H_find}, {"find_class", H_find_class}, {"find_all", H_find_all}, {"first", H_first},
         {"enum", H_enum}, {"properties", H_properties}, {"functions", H_functions}, {"to_table", H_to_table},
         {"exec", H_exec}, {"hook", H_hook}, {"hook_post", H_hook_post}, {"unhook", H_unhook},
-        {"signature", H_signature}, {nullptr, nullptr},
+        {"signature", H_signature}, {"new_object", H_new_object}, {"clone", H_clone}, {"package", H_package},
+        {"name", H_name}, {"can_create", H_can_create}, {nullptr, nullptr},
     };
     lua_getglobal(L, "h7");
     if (lua_isnil(L, -1)) {
@@ -968,6 +1083,13 @@ void OpenBindings(lua_State* L) {
         lua_newtable(L);
     }
     luaL_setfuncs(L, h7lib, 0);
+    lua_newtable(L); // h7.flags: object flags for new_object / clone
+    const std::pair<const char*, uint64_t> flagList[] = {
+        {"Public", ue3::RF_Public}, {"Standalone", ue3::RF_Standalone}, {"Transient", ue3::RF_Transient},
+        {"Archetype", ue3::RF_ArchetypeObject}, {"RootSet", ue3::RF_RootSet},
+    };
+    for (auto& [n, v] : flagList) { lua_pushinteger(L, (lua_Integer)v); lua_setfield(L, -2, n); }
+    lua_setfield(L, -2, "flags");
     lua_setglobal(L, "h7");
 }
 

@@ -229,7 +229,7 @@ keep object references across maps, or check `is_valid()` first.
 | `float` | number |
 | `bool` | boolean |
 | `string` | string |
-| `name` | string (writing a name requires it to exist in the engine already) |
+| `name` | string (a name the engine doesn't know yet is added to its name table) |
 | object, class, interface | object reference, or `nil` for `none` |
 | struct | live struct reference: `v.X` reads and `v.X = 1` writes the field in place |
 | `array<T>` | live array reference (see below) |
@@ -283,6 +283,45 @@ for keeping a snapshot.
 
 `class` can be a name (`"H7AdventureHero"` or `"MMH7Game.H7AdventureHero"`) or a class object. `find_all` scans
 every engine object, so call it when you need it rather than every frame.
+
+## Creating objects
+
+Mods can create new engine objects, most usefully **copies of game data** (archetypes: the templates the game
+spawns creatures, heroes, towns and buildings from). A copy starts with every property of its source; change
+what you need and add it to the game's lists. This is how a mod adds a new creature, hero or a whole faction.
+
+```lua
+local pkg = h7.package("MyMod")                 -- a package of your own: gives copies stable names
+local src = h7.find("Creature_Pixie.A_CreaturePixie")
+local sprite, created = h7.clone(src, "A_CreatureFrostSprite", pkg, h7.flags.RootSet)
+sprite.mNameInst = "Frost Sprite"               -- name shown in game (see below)
+sprite.mHitpoints = 20
+```
+
+| Function | |
+|---|---|
+| `h7.clone(source, name [, outer [, flags]])` | A copy of `source` (same class, every property copied) called `name` inside `outer` (default: the transient package). Returns the object and `true`; if `outer` already holds an object called `name` of the same class it is returned with `false` instead, so the same code can run again after a hot reload. Archetypes stay archetypes. `flags` adds object flags |
+| `h7.new_object(class, {name=, outer=, template=, flags=, archetype=, replace=})` | A new object of `class`, with properties from `template` (or the class defaults). Fails if `outer` already has an object called `name`, unless `replace = true` |
+| `h7.package(name)` | The top-level package `name`, created if it doesn't exist |
+| `h7.name(str)` | Adds `str` to the engine's name table and returns it |
+| `h7.can_create()` | `false` if the engine couldn't verify the game functions it needs (see the log); the functions above then fail |
+| `h7.flags` | Object flags: `Public`, `Standalone`, `Transient`, `Archetype`, `RootSet` |
+
+Things to know:
+
+- **Keep copies alive.** Outside the editor the garbage collector frees anything nothing references, on every map
+  change. Pass `h7.flags.RootSet` (never freed) or make sure game data the game keeps references the copy.
+- **Lazily loaded references.** Many Heroes VII references (creature and hero models `mVisuals`, icons, town
+  screens, `H7Faction.mStartTown`...) are `DynLoadObjectProperty` fields that the game loads from the object's
+  package when first needed and releases again with `Del*` functions. A copy has no package, so it can never
+  load them: call `source:DynLoadObjectProperty("mVisuals")` (or `DynLoadObjectArrayProperty` for arrays) on the
+  source **before** cloning, and stop the game's `Del*` functions for your copies (and their sources) with a
+  pre-hook. A creature without its model crashes the game when a battle starts.
+- **Names and texts** are localised by object name, which a copy doesn't share with its source: the game shows
+  the copy's fallback text (usually English). Set the cached texts yourself, e.g. `mNameInst` on units, or
+  hook the `GetName` of the class.
+- **Save games** store references by object path (`MyMod.A_CreatureFrostSprite`), so create your copies with
+  the same names before a save is loaded (at the main menu), and never rename them.
 
 ## Hooks
 
@@ -454,6 +493,7 @@ DumpImage=0
 | `h7.log/warn/error(...)` | [Logging](#logging-and-debugging) |
 | `h7.first`, `h7.find_all`, `h7.find`, `h7.find_class`, `h7.enum`, `h7.properties`, `h7.functions`, `h7.signature` | [Looking things up](#looking-things-up) |
 | `h7.to_table(value)` | Plain Lua copy of a struct, array or object |
+| `h7.clone`, `h7.new_object`, `h7.package`, `h7.name`, `h7.can_create`, `h7.flags` | [Creating objects](#creating-objects) |
 | `h7.hook(func, fn [, "pre" \| "post"])`, `h7.hook_post(func, fn)`, `h7.unhook(id)` | [Hooks](#hooks) |
 | `h7.on(event, fn)`, `h7.off(id)` | [Events](#events-and-timers) |
 | `h7.after(seconds, fn)`, `h7.every(seconds, fn)`, `h7.cancel(id)` | [Timers](#events-and-timers) |
