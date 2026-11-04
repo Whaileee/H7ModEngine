@@ -99,6 +99,7 @@ return {
     enabled = true,              -- false: off until a player turns it on
     category = "Combat",         -- shown (and filterable) in the Mods menu
     hidden = false,              -- true: not listed in the in-game Mods menu
+    settings = { ... },          -- values players can change in the Mods menu, see Settings below
 }
 ```
 
@@ -110,6 +111,38 @@ which lists every mod with its description and an Enabled/Disabled toggle. A cha
 loads or unloads on the next frame. The choice is stored in `H7ModEngine.ini` (see
 [Configuration](#configuration)) and overrides the manifest's `enabled`. Mods can do the same with
 `h7.set_mod_enabled(name, on)`; the `mod_toggled` event reports each change.
+
+**Settings.** A mod can offer values that players change in the Mods menu (select the mod, then **Settings**).
+Declare them in the manifest:
+
+```lua
+settings = {
+    { key = "multiplier", label = "Damage multiplier", default = 1.25, min = 0.25, max = 4, step = 0.25,
+      description = "All combat damage is multiplied by this." },
+    { key = "log", label = "Log hits", default = true },
+    { key = "who", label = "Applies to", options = { "Human player", "Everyone" }, default = "Human player" },
+    { key = "greeting", label = "Greeting", type = "text", default = "Hello" },
+}
+```
+
+| Field | |
+|---|---|
+| `key` | Name used in code (required) |
+| `label`, `description` | Shown in the Mods menu (`label` defaults to `key`) |
+| `type` | `"bool"`, `"number"`, `"choice"` or `"text"`; inferred from `default` (and `options`) when left out |
+| `default` | Value until the player changes it |
+| `min`, `max`, `step` | Numbers: values are clamped to `min`..`max` and rounded to a multiple of `step` (counted from `min`) |
+| `options` | Choices: the allowed values, in the order the menu cycles through them |
+| `reload` | `true`: the mod restarts when the value changes (for values only read at load time) |
+
+Read the current values from `mod.settings` (`mod.settings.multiplier`); it always has the latest value, so read
+it when you need it rather than copying it once. Assigning (`mod.settings.log = false`) changes the setting like
+the menu does. `pairs(mod.settings)` lists them. Values are stored in `H7ModEngine.ini`, section
+`[Mod.<name>]`. When a value changes the `setting_changed` event fires (`mod`, `key`, `value`). Other mods
+and exec scripts use `h7.mod_settings(name)` (a list of the declarations with their current `value`) and
+`h7.set_mod_setting(name, key, value)`, which returns the stored (clamped) value and raises an error for an
+unknown key or an invalid value. In the menu, **Change** toggles on/off, cycles choices and steps numbers up
+(wrapping to `min`); text settings are shown but can only be changed in code or the ini.
 
 **Each mod has its own globals.** Global variables you create stay inside your mod; reading a global you didn't
 create falls through to the shared environment (`h7`, `string`, `math`, `table`, ...). Two mods can both define
@@ -123,6 +156,7 @@ create falls through to the shared environment (`h7`, `string`, `math`, `table`,
 | `mod.dir` | Full path of the mod folder |
 | `mod.require(name)` | Runs `<mod folder>\<name>.lua` in the mod's environment once and returns its result (or `true`); later calls return the cached result |
 | `mod.save(table)` / `mod.load()` | Persistent data, see [Saving data](#saving-data) |
+| `mod.settings` | The mod's settings: read the current values, assign to change them (see Settings above) |
 
 **Unloading and hot reload.** About once a second the engine checks each loaded mod's folder (including
 subfolders) for changed `.lua` files. When one changed, the mod is unloaded and its `main.lua` runs again.
@@ -414,6 +448,7 @@ h7.off(id)
 | `map_loaded` | map name (lowercase), e.g. `h7logoentry`, `councilhub` (main menu), `sce_sephinroth` | When a different map is active. Battles don't trigger it |
 | `mods_loaded` | number of mods | After all mods have loaded (also after `h7.reload()`) |
 | `mod_toggled` | mod name, `enabled` | After a mod was loaded or unloaded by `h7.set_mod_enabled` (the Mods menu) |
+| `setting_changed` | mod name, key, new value | After a mod setting changed (Mods menu, `mod.settings`, `h7.set_mod_setting`) |
 
 Timers run on game time:
 
@@ -474,6 +509,10 @@ return hero, hero:GetMovementPoints()
 Enabled=DailyGold
 Disabled=HelloWorld
 
+; Mod settings, written by the Mods menu (one section per mod; see Settings)
+[Mod.DamageScale]
+multiplier=1.5
+
 [Dev]
 ; Write names.txt / objects.txt to dumps\ at startup (default 1)
 DumpSDK=1
@@ -497,8 +536,9 @@ DumpImage=0
 | `h7.hook(func, fn [, "pre" \| "post"])`, `h7.hook_post(func, fn)`, `h7.unhook(id)` | [Hooks](#hooks) |
 | `h7.on(event, fn)`, `h7.off(id)` | [Events](#events-and-timers) |
 | `h7.after(seconds, fn)`, `h7.every(seconds, fn)`, `h7.cancel(id)` | [Timers](#events-and-timers) |
-| `h7.mods()` | `{name, version, author, description, category, enabled, loaded, hidden}` for every installed mod (`enabled` but not `loaded`: it failed to load, see the log) |
+| `h7.mods()` | `{name, version, author, description, category, enabled, loaded, hidden, settings}` for every installed mod (`settings`: how many it declares) (`enabled` but not `loaded`: it failed to load, see the log) |
 | `h7.set_mod_enabled(name, on)` | Turn a mod on or off; saved in the ini, applied on the next frame |
+| `h7.mod_settings(name)`, `h7.set_mod_setting(name, key, value)` | A mod's settings with their values; change one (see Settings) |
 | `h7.reload()` | Unload and reload all mods (on the next frame) |
 | `h7.exec(command)` | Run a console command |
 
@@ -509,7 +549,7 @@ DumpImage=0
 
 | Mod | Shows |
 |---|---|
-| ModManager | The main menu's Mods entry: adding Flash widgets to a game menu and routing their clicks |
+| ModManager | The main menu's Mods entry and its mod and settings lists: adding Flash widgets to a game menu and routing their clicks |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |
@@ -532,3 +572,5 @@ DumpImage=0
 - The game's Flash menus cache every translation they ask for (`H7FlashMovieCntl.FlashLocalize`) for the rest of
   the session, so changing a translation through a hook also changes it everywhere else that key is used.
 - Mods run on the game thread: a slow hook slows the game down.
+- In the Mods menu the selection goes back to the first row after each change (the list is rebuilt; its rows
+  can't be selected from Lua).

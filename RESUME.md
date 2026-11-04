@@ -283,6 +283,25 @@ Next: skirmish/adventure map (town screen, recruiting, AI), save/load, H2 abilit
 unicorn blind, phoenix fire immunity), stat balance (Phoenix initiative low, Dwarf scaling capped at x3),
 H2 hero portraits/bios.
 
+## Mod settings + Mods button fix (2026-11-04, branch `feature/mod-settings`, verified in game)
+
+- Manifest `settings = { {key, label, description, type, default, min, max, step, options, reload}, ... }`;
+  values in the ini `[Mod.<name>]`; `mod.settings` proxy (read/assign/pairs), `h7.mod_settings`,
+  `h7.set_mod_setting`, event `setting_changed`; `reload = true` restarts the mod. `h7.mods()[i].settings` = count.
+  Example mods use settings (DailyGold gold, CombatXP/DamageScale/HeroMovement multipliers, DamageScale log,
+  HeroMovement who). `tests/settingstest.lua`: 13/13 OK.
+- ModManager: the map window's Generate Map button = Settings (mods with settings) / Default (settings view);
+  settings view rows: label, value, range, "Changed"; Continue = Change; Back = back to the mod list. Details panel
+  lists current values. Selection resets to row 1 after each change (rows unreachable: `mMapList.masked` and its
+  children are AS-created; `GetObject` returns nil).
+- Mods button in sub-menus: the movie hides its own buttons (`visible = false`) in sub-menus; ModManager copies
+  Options' visible/alpha/x to Mods every 0.1 s. Verified with real clicks.
+- `GFxObject:Invoke("GotoSPMenu")` etc. on the main menu does NOT open sub-menus; drive the UI with real input:
+  `tests/click.ps1 <x> <y>` (window pixels, as in shot.ps1 screenshots; brings the game to the front). Clicks
+  right after a list refill can be lost; wait ~2 s. Main menu buttons (2048x1080 window): Jeden gracz 1730,330;
+  Mods 1730,890; sub-menu Wstecz 1730,970; map window Back 240,1015, Continue 1810,1015, Generate 1025,978,
+  rows from y=224 every 49 px.
+
 ## Lua API (implemented)
 
 - Logging: `h7.log/warn/error`, `print` → `logs\engine.log` with mod prefix

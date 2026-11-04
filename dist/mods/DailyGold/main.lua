@@ -1,7 +1,7 @@
 -- DailyGold: the local (human) player receives bonus gold at the start of every new day.
--- Shows: a post-hook on a game function, finding a game object, calling game functions.
+-- Shows: a post-hook on a game function, finding a game object, calling game functions, a mod setting.
 
-local GOLD_PER_DAY = 500 -- edit while the game runs; the mod reloads automatically
+-- The amount is a setting (see mod.lua): players change it in the Mods menu, mod.settings has the current value.
 
 local function local_player()
     local adventure = h7.first("H7AdventureController")
@@ -13,6 +13,8 @@ h7.hook_post("MMH7Game.H7Calendar.NextDay", function(calendar)
     local player = local_player()
     if not player then return end
     -- H7ResourceSet.ModifyCurrency(int modAmount, bool updateGui)
-    player:GetResourceSet():ModifyCurrency(GOLD_PER_DAY, true)
-    h7.log(("+%d gold for %s"):format(GOLD_PER_DAY, player:GetName()))
+    local gold = mod.settings.gold
+    if gold <= 0 then return end
+    player:GetResourceSet():ModifyCurrency(gold, true)
+    h7.log(("+%d gold for %s"):format(gold, player:GetName()))
 end)
