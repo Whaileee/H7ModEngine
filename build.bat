@@ -42,7 +42,12 @@ if /i "%1"=="deploy" (
   copy /y "%ROOT%bin\dinput8.dll" "%GAME%\Binaries\Win64\dinput8.dll" >nul || exit /b 1
   if not exist "%GAME%\H7ModEngine" mkdir "%GAME%\H7ModEngine"
   if not exist "%GAME%\H7ModEngine\H7ModEngine.ini" copy /y "%ROOT%dist\H7ModEngine.ini" "%GAME%\H7ModEngine\H7ModEngine.ini" >nul
-  xcopy /e /i /y /q "%ROOT%dist\mods" "%GAME%\H7ModEngine\mods" >nul
+  rem Only ModManager is installed; "build.bat deploy examples" also installs the example mods.
+  if /i "%2"=="examples" (
+    xcopy /e /i /y /q "%ROOT%dist\mods" "%GAME%\H7ModEngine\mods" >nul
+  ) else (
+    xcopy /e /i /y /q "%ROOT%dist\mods\ModManager" "%GAME%\H7ModEngine\mods\ModManager" >nul
+  )
   xcopy /e /i /y /q "%ROOT%dist\lib" "%GAME%\H7ModEngine\lib" >nul
   echo Deployed to %GAME%
 )

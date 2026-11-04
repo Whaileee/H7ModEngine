@@ -100,8 +100,8 @@ git clone --recursive https://github.com/Whaileee/H7ModEngine.git
 build.bat
 ```
 
-`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it and the `dist\` content into the game
-folder (set `H7_GAME_DIR` to point it at your installation). See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
+`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini and ModManager into the game
+folder; `build.bat deploy examples` adds the example mods. Set `H7_GAME_DIR` to point it at your installation. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
 for the architecture, the development loop, in-game testing and the reverse-engineering notes.
 
 ## How it works
