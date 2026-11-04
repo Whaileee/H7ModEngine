@@ -6,6 +6,9 @@ repo_name: Whaileee/H7ModEngine
 edit_uri: ""  # pages are built from a release tag; editing happens on main
 
 docs_dir: docs
+# Agent notes (CLAUDE.md) live next to the pages but are not part of the site.
+exclude_docs: |
+  CLAUDE.md
 extra_css:
   - assets/sdk.css
 site_dir: site

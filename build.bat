@@ -49,6 +49,8 @@ if /i "%1"=="deploy" (
     xcopy /e /i /y /q "%ROOT%dist\mods\ModManager" "%GAME%\H7ModEngine\mods\ModManager" >nul
   )
   xcopy /e /i /y /q "%ROOT%dist\lib" "%GAME%\H7ModEngine\lib" >nul
+  rem CLAUDE.md files are repository notes, not mod files.
+  del /q "%GAME%\H7ModEngine\mods\ModManager\CLAUDE.md" 2>nul
   echo Deployed to %GAME%
 )
 endlocal
