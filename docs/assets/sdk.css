@@ -1,0 +1,8 @@
+/* Game classes pages (tools/docs/sdk_pages.py) */
+.md-typeset .sdk-chain { font-size: .75rem; }
+.md-typeset table:not([class]) td code { word-break: normal; }
+.md-typeset table:not([class]) td:first-child { white-space: nowrap; }
+.md-typeset table:not([class]) td code a { color: var(--md-typeset-a-color); }
+.md-typeset .sdk-filter { width: 100%; max-width: 24rem; padding: .4rem .6rem; margin-bottom: .6rem;
+  border: 1px solid var(--md-default-fg-color--lighter); border-radius: .2rem;
+  background: var(--md-default-bg-color); color: var(--md-default-fg-color); font-size: .75rem; }

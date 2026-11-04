@@ -1,0 +1,20 @@
+{"package": "AkAudio", "classes": [
+{"name":"ActorFactoryAkAmbientSound","kind":"class","native_only":true,"props":[{"name":"AmbientEvent","type":"Object"}],"package":"AkAudio"},
+{"name":"AkAmbientSound","kind":"class","native_only":true,"props":[{"name":"PlayEvent","type":"Object"},{"name":"StopWhenOwnerIsDestroyed","type":"bool"},{"name":"bAutoPlay","type":"bool"},{"name":"bIsPlaying","type":"bool"}],"funcs":[{"name":"StartPlayback","kind":"function"},{"name":"StopPlayback","kind":"function"}],"package":"AkAudio"},
+{"name":"AkAudioDevice","kind":"class","native_only":true,"package":"AkAudio"},
+{"name":"AkComponent","kind":"class","native_only":true,"props":[{"name":"AutoPlayEvent","type":"Object"},{"name":"BoneName","type":"name"},{"name":"bStopWhenOwnerDestroyed","type":"bool"}],"package":"AkAudio"},
+{"name":"InterpTrackAkEvent","kind":"class","native_only":true,"structs":[{"name":"AkEventTrackKey","fields":[{"name":"Event","type":"Object"},{"name":"Time","type":"float"}]}],"props":[{"name":"AkEvents","type":"array"}],"package":"AkAudio"},
+{"name":"InterpTrackAkRTPC","kind":"class","native_only":true,"props":[{"name":"Param","type":"string"}],"package":"AkAudio"},
+{"name":"InterpTrackInstAkEvent","kind":"class","native_only":true,"props":[{"name":"LastUpdatePosition","type":"float"},{"name":"WaitsForCallBack","type":"bool"}],"package":"AkAudio"},
+{"name":"InterpTrackInstAkRTPC","kind":"class","native_only":true,"package":"AkAudio"},
+{"name":"SeqAct_AkClearBanks","kind":"class","native_only":true,"package":"AkAudio"},
+{"name":"SeqAct_AkLoadBank","kind":"class","native_only":true,"props":[{"name":"Async","type":"bool"},{"name":"Bank","type":"Object"},{"name":"Signal","type":"int"},{"name":"bWaitingCallback","type":"bool"}],"package":"AkAudio"},
+{"name":"SeqAct_AkPostEvent","kind":"class","native_only":true,"props":[{"name":"Event","type":"Object"},{"name":"Signal","type":"int"}],"package":"AkAudio"},
+{"name":"SeqAct_AkPostTrigger","kind":"class","native_only":true,"props":[{"name":"Trigger","type":"string"}],"package":"AkAudio"},
+{"name":"SeqAct_AkSetRTPCValue","kind":"class","native_only":true,"props":[{"name":"Param","type":"string"},{"name":"Running","type":"bool"},{"name":"Value","type":"float"}],"package":"AkAudio"},
+{"name":"SeqAct_AkSetRTPCValueBus","kind":"class","native_only":true,"props":[{"name":"Param","type":"string"},{"name":"Running","type":"bool"},{"name":"Value","type":"float"}],"package":"AkAudio"},
+{"name":"SeqAct_AkSetState","kind":"class","native_only":true,"props":[{"name":"State","type":"string"},{"name":"StateGroup","type":"string"}],"package":"AkAudio"},
+{"name":"SeqAct_AkSetSwitch","kind":"class","native_only":true,"props":[{"name":"Switch","type":"string"},{"name":"SwitchGroup","type":"string"}],"package":"AkAudio"},
+{"name":"SeqAct_AkStartAmbientSound","kind":"class","native_only":true,"package":"AkAudio"},
+{"name":"SeqAct_AkStopAll","kind":"class","native_only":true,"package":"AkAudio"}
+]}

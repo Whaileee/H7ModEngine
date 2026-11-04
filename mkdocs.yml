@@ -6,6 +6,8 @@ repo_name: Whaileee/H7ModEngine
 edit_uri: ""  # pages are built from a release tag; editing happens on main
 
 docs_dir: docs
+extra_css:
+  - assets/sdk.css
 site_dir: site
 
 # tools/docs/hooks.py stamps the release tag on the site and turns links that leave docs/ (source files)
@@ -23,6 +25,7 @@ nav:
       - Values and types: reference/types.md
       - Mods, manifest and settings: reference/mod.md
       - Events and timers: reference/events.md
+  - Game classes: sdk/index.md  # expanded by tools/docs/hooks.py
   - Engine development: DEVELOPMENT.md
 
 theme:
@@ -69,7 +72,7 @@ markdown_extensions:
 
 validation:
   nav:
-    omitted_files: warn
+    omitted_files: info  # the generated class pages are not listed in the sidebar
     not_found: warn
   links:
     not_found: warn

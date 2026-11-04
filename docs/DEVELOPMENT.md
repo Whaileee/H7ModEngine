@@ -380,7 +380,17 @@ GitHub Pages with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/
 - Pull requests that change `docs/`, `mkdocs.yml` or `tools/docs/` build the site with `--strict`, so broken
   links and anchors fail the check.
 
-The navigation is in `mkdocs.yml`; add new pages there. `tools/docs/hooks.py` puts the release tag in the site
+The navigation is in `mkdocs.yml`; add new pages there.
+
+The **Game classes** section (`sdk/`, one page per class) is generated at build time by `tools/docs/sdk_pages.py`
+from `tools/docs/sdk/*.json`. That JSON holds the declarations (no function bodies) of every class the game loads,
+extracted from the decompiled UnrealScript and checked against the running game's object dump. Regenerate it when
+the targeted game version changes, and commit it:
+
+```bash
+python tools/docs/extract_sdk.py --src N:/UDK/Custom/Development/Src --dump "<Game>/H7ModEngine/dumps/objects.txt"
+```
+ `tools/docs/hooks.py` puts the release tag in the site
 title and turns links that leave `docs/` (such as `../src/lua/bindings.cpp`) into GitHub links at that tag.
 To preview locally:
 

@@ -183,6 +183,8 @@ Lua. To find the right one:
 - **Read the UnrealScript sources.** Decompiled sources for the game (the `MMH7Game` package has about 1400
   classes) are the best map: they show what each function does and who calls it. Search them for the
   behaviour you want to change, then hook the function that computes it.
+- **Browse the [game classes](https://whaileee.github.io/H7ModEngine/sdk/)** on the documentation site: every
+  class the game loads with its properties, functions (with hook paths), structs, enums and default values.
 - **Search `dumps\objects.txt`.** One line per engine object, written at startup:
   `12345 00007ff4fd9f4f40 Function MMH7Game.H7Calendar.NextDay`.
 - **Ask the engine.** From a mod or the `exec` folder:
