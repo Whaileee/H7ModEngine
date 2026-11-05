@@ -457,3 +457,12 @@ Next:
 2. ~~Deploy H7Lobby~~ done 2026-11-05: live at https://h7-lobby.whaileee.workers.dev (Workers Builds from
    GitHub Whaileee/H7Lobby `main`); register/list/heartbeat/delete round trip checked in production. Engine default
    `[Online] LobbyUrl` (default ini + `ConfigDefault` in dllmain.cpp).
+
+### First two-PC attempt (2026-11-05 22:04, user + friend over the internet)
+- Friend (base install, 0 packs) saw the host in the browser, got the compatibility prompt, joined anyway.
+- **Host's Launch.log: `NetComeGo: Open TheWorld ... 178.43.135.35` then `Close ... TcpipConnection_0` 7 s later**: the
+  lobby, NAT/UPnP and the direct UDP connection all work; the game itself dropped the connection, most likely the
+  package handshake (host's CookedPC content vs. the friend's unmodded install). Friend's client then showed the
+  20 s timeout. Next: friend's Launch.log for the exact reason; retry with matching content.
+- Friend hosting failed: empty Lua list encoded as `{}` -> lobby "mods must be an array". Fixed in the mod
+  (`json.array()`) and the lobby (accepts `{}`; H7Lobby branch `fix/empty-lists`).
