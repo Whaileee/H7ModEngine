@@ -106,7 +106,7 @@ Every mod has a global `mod` table describing itself:
 ### mod.require
 
 ```lua
-mod.require(name) → value
+mod.require(name: string) → any
 ```
 
 Runs `<mod folder>\<name>.lua` in the mod's environment (it sees and sets the same globals as `main.lua`) and
@@ -129,7 +129,7 @@ local util = mod.require("util")
 ### mod.save
 
 ```lua
-mod.save(table)
+mod.save(data: table)
 ```
 
 Writes `table` to `<Game>\H7ModEngine\data\<mod name>.lua`, replacing what was saved before. Numbers, strings,

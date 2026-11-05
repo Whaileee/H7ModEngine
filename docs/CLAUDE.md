@@ -16,6 +16,10 @@ This file is excluded from the site (`exclude_docs` in `mkdocs.yml`).
 ## Rules
 
 - API changes update **both** `API.md` and the matching `reference/*.md` page in the same change.
+- The first ```lua block under each heading of `reference/{h7,mod,objects}.md` is the **typed signature**
+  (`h7.first(class: string | Class) → Object?`; `name?:` = optional, `→` then results). The debug console's
+  suggestions are generated from these lines: after changing one, run `python tools/docs/console_api.py`
+  (CI checks it).
 - Describe behaviour that was verified in game; mark anything unverified.
 - New pages must be added to `nav` in `mkdocs.yml`. Links and anchors must resolve (strict build).
 - Links that leave `docs/` (e.g. `../src/lua/bindings.cpp`) are fine: `tools/docs/hooks.py` turns them into
