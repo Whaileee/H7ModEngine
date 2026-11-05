@@ -109,7 +109,7 @@ return {
         { params = { "result: OnlineGameSearchResult", "ip: string", "port: int" }, ret = "bool", doc = "Makes a server-browser entry point at host ip:port the way a LAN search result does, so the game's own join (JoinOnlineGame → GetResolved..." },
     },
     ["h7.net.upnp_add"] = {
-        { params = { "port: int", "protocol: string", "fn?: function(res: table)", "description?: string" }, ret = "id: int", doc = "Asks the router (UPnP IGD) to forward port (protocol \"UDP\" or \"TCP\") to this PC's same port, replacing an existing mapping of that port." },
+        { params = { "port: int", "protocol: string", "fn?: function(res: table)", "description?: string" }, ret = "id: int", doc = "Asks the router (UPnP IGD) to forward port (protocol \"UDP\" or \"TCP\") to this PC's same port." },
     },
     ["h7.net.upnp_remove"] = {
         { params = { "port: int", "protocol: string", "fn?: function(res: table)" }, ret = "id: int", doc = "Removes the router's mapping of port/protocol." },
