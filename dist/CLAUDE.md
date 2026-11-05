@@ -3,6 +3,7 @@
 | Path | Notes |
 |---|---|
 | `H7ModEngine.ini` | Default config. `deploy` copies it **only if the game has none**, so changes here don't reach an existing install |
+| `mods/DebugConsole/` | In-game Lua console + live log (`enabled = false`, category Developer). Bundled and deployed like ModManager. Key: ini `[Console] Key=` (read with `h7.config` every second; the engine adds `Key=Tilde` to existing inis). Logic can be tested offline with a stubbed `h7` |
 | `mods/ModManager/` | The in-game Mods menu (`hidden = true`). Always deployed, and embedded in `dinput8.dll` with the ini (`build.bat` -> `src/engine/bundle.cpp`): a DLL whose bundled ModManager differs from the one it last installed overwrites the game copy at startup. See its own `CLAUDE.md` |
 | `mods/HelloWorld`, `DailyGold`, `CombatXP`, `DamageScale`, `HeroMovement` | Example mods referenced by the docs and tests. Ship `enabled = false` (except HelloWorld); installed only by `build.bat deploy examples` |
 | `lib/` | Shared Lua libraries (currently empty) |

@@ -77,6 +77,7 @@ The engine ships with these example mods:
 | DamageScale | Scales combat damage | off |
 | HeroMovement | The human player's heroes get more movement points per day | off |
 | ModManager | The Mods entry in the main menu (hidden from its own list) | on |
+| DebugConsole | In-game Lua console and live log for mod makers; key in `H7ModEngine.ini`, `[Console] Key=` (default Tilde) | off |
 
 ## Writing mods
 
@@ -107,7 +108,7 @@ git clone --recursive https://github.com/Whaileee/H7ModEngine.git
 build.bat
 ```
 
-`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini and ModManager into the game
+`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini, ModManager and DebugConsole into the game
 folder; `build.bat deploy examples` adds the example mods. Set `H7_GAME_DIR` to point it at your installation. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
 for the architecture, the development loop, in-game testing and the reverse-engineering notes.
 
