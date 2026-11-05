@@ -414,11 +414,17 @@ Done (builds; **verified offline only**, not yet in game):
 - Gotcha: vcvars64.bat fails when the calling batch's paths contain `..` segments (separate test .bat was dropped
   for that reason; the test lives in build.bat). npm 11 blocks install scripts (H7Lobby approves workerd/esbuild).
 
+In-game run 2026-11-05 18:11 (main menu, councilhub): **verified**. Engine starts clean (no errors in the log),
+`ConfigDefault` added `[Online] LobbyUrl` to the existing ini. `selftest.lua` 30/30 OK incl. json round trip,
+local_ip, and `h7.http.get("https://example.com/")` -> 200, 577 bytes, callback ~70 ms later on the game thread.
+`hooktest.lua` all OK (block / override / restore / PostRender args / script->script 109 calls).
+
 Next:
-1. In game: `tests/selftest.lua` (new json/local_ip/http checks) + `hooktest.lua`.
-2. The bundled OnlineLobby mod (hooks in docs/ONLINE.md). First in-game checks it depends on: can a pre-hook change
+1. The bundled OnlineLobby mod (hooks in docs/ONLINE.md). Found 2026-11-05: for LAN queries
+   `StartFilteringBrowserList` only filters by game type and calls `InitializeBrowserList(SearchResults)` (no mesh
+   beacon), so lobby entries can be appended to `SearchResults` before that. First in-game checks it depends on: can a pre-hook change
    `CreateOnlineGame`'s `IsLAN` arg; dump a LAN search result's `PlatformData` (FSessionInfo layout) so the engine
    can build lobby results (`make_lan_result`, not written yet); direct join `start ip:27015` between two PCs.
-3. ~~Deploy H7Lobby~~ done 2026-11-05: live at https://h7-lobby.whaileee.workers.dev (Workers Builds from
+2. ~~Deploy H7Lobby~~ done 2026-11-05: live at https://h7-lobby.whaileee.workers.dev (Workers Builds from
    GitHub Whaileee/H7Lobby `main`); register/list/heartbeat/delete round trip checked in production. Engine default
    `[Online] LobbyUrl` (default ini + `ConfigDefault` in dllmain.cpp).

@@ -575,8 +575,9 @@ end)
 (lower-case names) and `error`. A 404 or 500 is `ok = true` with that `status`. Decoded JSON `null` is
 `h7.json.null`, and decoded arrays stay arrays when encoded again (even empty ones).
 
-Verified outside the game with `build.bat nettest online` (HTTPS GET/POST, errors, UPnP map/unmap on a real
-router); not yet verified inside the game.
+Verified in game (JSON, `local_ip`, an HTTPS GET from the main menu) and outside it with `build.bat nettest
+online` (HTTPS GET/POST, errors, dropped callbacks, UPnP map/unmap on a real router). UPnP from inside the game
+is not verified yet.
 
 ## Configuration
 
