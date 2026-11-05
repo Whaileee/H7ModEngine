@@ -4,8 +4,13 @@ Ubisoft's online services for Heroes VII (Ubiservices login, RendezVous matchmak
 down, so the **Online** menu entries no longer work. This document describes how an H7ModEngine mod plus a small
 community lobby server replace them, without patching game code.
 
-Status: design only, written from the decompiled sources (`N:\UDK\Custom\Development\Src`). Nothing here is
-verified in game yet; the open questions are listed at the end.
+Status (2026-11-05): implemented as the bundled `OnlineLobby` mod (`dist/mods/OnlineLobby`) and the H7Lobby Worker
+(https://h7-lobby.whaileee.workers.dev). Verified in game on one PC: the Online menu opens, hosting goes through the
+LAN path and is listed, the browser shows lobby games with edition, engine version and compatibility, the "join
+anyway?" prompt works, and a join to an unreachable host times out cleanly. **Not yet verified: a real match
+between two PCs.** Where the implementation differs from the plan below: lobby entries get a native session record
+from `h7.net.set_lan_host` (0x38 bytes, see `src/lua/bindings.cpp`); the lobby's TCP reachability probe is off (the
+host listens on UDP 27015 only).
 
 ## How the original online flow works
 

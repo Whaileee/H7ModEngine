@@ -419,8 +419,26 @@ In-game run 2026-11-05 18:11 (main menu, councilhub): **verified**. Engine start
 local_ip, and `h7.http.get("https://example.com/")` -> 200, 577 bytes, callback ~70 ms later on the game thread.
 `hooktest.lua` all OK (block / override / restore / PostRender args / script->script 109 calls).
 
+### OnlineLobby mod (2026-11-05, verified in game on one PC)
+- Bundled mod `dist/mods/OnlineLobby` (enabled). Hooks: `H7MainMenuCntl.CheckConnection` (block + return true),
+  `CreateOnlineGame` pre (IsLAN=true), `OnCreateH7GameSessionComplete` post (UPnP, register, heartbeat 15 s),
+  `UpdateOnlineGameStarted` / native `DestroyOnlineGame` / map councilhub (unlist), `SearchOnlineGames` pre (LAN +
+  lobby fetch), `StartFilteringBrowserList` pre (append entries), `JoinSelected` pre + `H7GFxRequestPopup`
+  `YesButtonClicked`/`NoButtonClicked` post (the "join anyway?" prompt; YesNoPopup with None delegates is fine).
+- The hosted lobby map is `h7main`. The host listens on **UDP 27015 only** (no TCP listener); LAN beacon UDP 14001.
+- Session record (PlatformData of a LAN result) = **0x38 bytes**: vtable game+1D10EB8, sockaddr_in at +8, embedded
+  object (vtable game+1EBB900) at +0x18, TArray at +0x28. A 0x20-byte fake crashed the game at the join timeout
+  (`DestroyOnlineGame` freed heap garbage; the first crash looked like a Scaleform render-thread null vcall).
+  Fixed; the timeout now shows the normal popup.
+- `h7.game_content`: 29 packs / 593 packages on the user's install, ~70 ms. Edition = base/modded.
+- UPnP stopped answering on the user's router after 17:40 (Windows' own NATUPnP object finds nothing either);
+  not a code issue. The engine now serialises UPnP requests and waits 12 s.
+- The browser's Host column truncates long names; the user wants a separate version column. Rows are built in
+  ActionScript from fixed fields, so a real column needs a patched Flash movie (open).
+
 Next:
-1. The bundled OnlineLobby mod (hooks in docs/ONLINE.md). Found 2026-11-05: for LAN queries
+1. Two-PC test of a real online match. Version column (Flash patch) if the user wants it.
+2. (done, see above) The bundled OnlineLobby mod (hooks in docs/ONLINE.md). Found 2026-11-05: for LAN queries
    `StartFilteringBrowserList` only filters by game type and calls `InitializeBrowserList(SearchResults)` (no mesh
    beacon), so lobby entries can be appended to `SearchResults` before that. First in-game checks it depends on: can a pre-hook change
    `CreateOnlineGame`'s `IsLAN` arg; dump a LAN search result's `PlatformData` (FSessionInfo layout) so the engine
