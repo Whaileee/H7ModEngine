@@ -3,13 +3,17 @@
 -- Online games run on the game's own LAN code path: the host's PC is the server and players connect to it
 -- directly. The lobby server (H7Lobby) only lists the games:
 --   hosting  CreateOnlineGame(IsLAN=false) is switched to LAN, then the game is registered with the lobby
---            (UPnP opens port 27015 first) and kept alive with a heartbeat until it starts or the host leaves.
+--            (UPnP opens UDP and TCP 27015 first) and kept alive with a heartbeat until it starts or the host
+--            leaves. The lobby lists it only after this PC answers its TCP challenge on 27015 (h7.net.responder_*,
+--            key derived from a secret this mod generates per registration).
 --   finding  Online > Join opens browser.lua: the map selection window (like the Mods menu) listing the lobby's
 --            games: Host | Map | Players | Version (edition + engine) | Status (Compatible / Differs).
 --   joining  the chosen game becomes the manager's only search result, with a native LAN session record pointing
 --            at the host (h7.net.set_lan_host), and goes through the game's JoinSelected -> JoinOnlineGame ->
 --            GetResolvedConnectString -> "start ip:port". A game whose version, engine, edition, content packs
---            (CookedPC) or gameplay mods differ asks first, naming what differs.
+--            (CookedPC) or gameplay mods differ, or that the lobby didn't verify, asks first, naming what differs.
+--   hardening  hosts can't make this game download packages (AllowDownloads off on the net drivers) or send it
+--            to another server (ClientTravel redirects away from the joined host are cancelled).
 -- Design notes: docs/ONLINE.md in the H7ModEngine repository. Lobby API: README of H7Lobby.
 
 local json = h7.json
@@ -18,12 +22,15 @@ local LOBBY_API = 1      -- the lobby API version this mod speaks
 local PORT = 27015
 local GAME_VERSION = "2.2.1" -- the only build the engine supports
 local MP = "MMH7Game.H7MultiplayerGameManager."
+local CHALLENGE_LABEL = "H7LOBBY challenge key" -- ckey = hmac_sha256(token, this); H7Lobby src/verify.ts
 
 local state = {
     content = nil,         -- h7.game_content() result (community content packs in CookedPC)
     hostRequested = false, -- an Online game is being created
     host = nil,            -- { id, token, timer, ... } while our game is in the lobby
     confirm = nil,         -- the lobby game while the "join anyway?" popup is open
+    joined = nil,          -- { ip, port } of the last host joined through the lobby
+    redirect = nil,        -- a ClientTravel away from that host, seen in PreClientTravel
 }
 
 local function log(fmt, ...) h7.log(fmt:format(...)) end
@@ -110,6 +117,8 @@ local function compatibility(g)
         diff_lists("Content", content_packs(), g.content, issues)
     end
     diff_lists("Mod", gameplay_mods(), g.mods, issues)
+    -- H7Lobby lists only verified games; a custom or older lobby may not check, so ask before joining those.
+    if g.verified ~= true then issues[#issues + 1] = "Host not verified by the lobby" end
     return issues
 end
 
@@ -137,9 +146,13 @@ local function stop_hosting(reason)
     if not h then return end
     state.host = nil
     if h.timer then h7.cancel(h.timer) end
+    h7.net.responder_stop()
     log("Online game %s removed from the lobby (%s)", h.id or "(not listed yet)", reason)
     if h.id then api("DELETE", "/v1/games/" .. h.id, nil, h.token) end
-    if h.upnpOwned then h7.net.upnp_remove(PORT, "UDP") end -- not a mapping the game made itself
+    -- Only mappings this mod made, not ones that already existed (the game's own UPnP, the user's router rules).
+    for proto, owned in pairs(h.upnpOwned) do
+        if owned then h7.net.upnp_remove(PORT, proto) end
+    end
 end
 
 local function player_count()
@@ -177,54 +190,90 @@ local function heartbeat()
     local h = state.host
     if not h or not h.id then return end
     api("POST", "/v1/games/" .. h.id .. "/heartbeat", { players = player_count() }, h.token, function(res)
-        if res.status == 404 and state.host == h then
-            -- The lobby dropped us (e.g. heartbeats were late while the game window was in the background).
-            log("Lobby forgot our game; registering again")
+        if (res.status == 404 or res.status == 403) and state.host == h then
+            -- 404: the lobby dropped us (e.g. heartbeats were late while the game window was in the background).
+            -- 403: our address changed (heartbeats are pinned to the registering IP); registering verifies again.
+            log("Lobby %s our game (HTTP %d); registering again", res.status == 404 and "forgot" or "refused", res.status)
             h.id = nil
             h.register()
         end
     end)
 end
 
+-- The popup for a game the lobby refused because its TCP challenge on PORT got no (right) answer.
+local function unreachable_popup(h, why)
+    local hint = " (or turn UPnP on in the OnlineLobby settings)"
+    if h.upnp then hint = h.upnpError and (" (UPnP could not do it: " .. h.upnpError .. ")") or "" end
+    popup(("The online lobby could not reach this PC on TCP port %d (%s), so the game is not listed. Forward UDP "
+        .. "and TCP %d to %s in your router%s, then create the game again. Players on your LAN can still join.")
+        :format(PORT, why, PORT, h7.net.local_ip() or "this PC", hint))
+end
+
 local function publish(isDuel)
     local settings = manager():GetOnlineGameSettings()
     if not settings then return log("Online: no game settings after creating the game; not listed") end
     stop_hosting("replaced")
-    local h = { upnp = mod.settings.upnp }
+    state.joined = nil
+    local h = { upnp = mod.settings.upnp, upnpOwned = {} }
     state.host = h
     local body = describe_game(settings, isDuel)
 
     function h.register()
+        -- A fresh secret per registration. The lobby keeps its hash for Bearer auth; the responder only holds the
+        -- derived challenge key, so an open TCP port never answers with anything the token could be rebuilt from.
+        h.token = h7.crypto.random_hex(32)
+        local ok, err = h7.net.responder_start(PORT, h7.crypto.hmac_sha256(h.token, CHALLENGE_LABEL))
+        h.responderError = not ok and tostring(err) or nil
+        if ok then log("Online: answering the lobby's check on TCP %d", PORT)
+        else log("Online: can't answer the lobby's check on TCP %d: %s", PORT, h.responderError) end
+        body.token = h.token
         api("POST", "/v1/games", body, nil, function(res, data)
             if state.host ~= h then return end -- the host left meanwhile
+            if res.status == 403 and data and data.port ~= nil then
+                -- The challenge failed: {error, ip, port}; the reason is the error's last "(...)" when it names one.
+                local why = h.responderError and ("this PC could not listen: " .. h.responderError)
+                    or tostring(data.error or "no answer"):match("%(([^()]+)%)%s*$") or tostring(data.error)
+                log("Online: the lobby could not verify this PC: %s", tostring(data.error))
+                unreachable_popup(h, why)
+                return
+            end
             if res.status ~= 201 or not data then
                 local why = data and data.error or res.error or ("HTTP " .. res.status)
                 log("Online: lobby registration failed: %s", why)
                 popup("Could not list the game in the online lobby (" .. why .. "). Players on your LAN can still join.")
                 return
             end
-            h.id, h.token = data.id, data.token
-            log("Online game listed in the lobby as %s at %s:%d", data.id, data.ip, data.port)
-            if not h.upnpOk then
-                -- The lobby can't test UDP, so this is the host's only hint that nobody outside can connect.
-                local why = h.upnp and ("your router didn't open it automatically (" .. tostring(h.upnpError) .. ")")
-                    or "opening it automatically (UPnP) is off in the OnlineLobby settings"
-                popup(("Your game is listed online. Players outside your network can join only if UDP port %d "
-                    .. "reaches this PC: %s. Forward UDP %d to %s in your router, or play over a virtual LAN.")
-                    :format(PORT, why, PORT, h7.net.local_ip() or "this PC"))
-            end
+            h.id = data.id
+            if type(data.token) == "string" then h.token = data.token end -- a lobby that issues its own token
+            log("Online game listed in the lobby as %s at %s:%d%s", data.id, data.ip, data.port,
+                data.verified and " (verified)" or "")
         end)
     end
 
-    -- The host's game listens on UDP 27015 only (no TCP listener, measured 2026-11-05), so only UDP is mapped.
+    -- The game listens on UDP 27015 only (measured 2026-11-05); TCP 27015 is the lobby's challenge (responder).
+    -- Both are mapped and registration waits for both answers. Ownership is tracked per protocol so leaving
+    -- removes only what this mod added.
     if h.upnp then
-        h7.net.upnp_add(PORT, "UDP", function(r)
-            h.upnpOk, h.upnpError, h.upnpOwned = r.ok, r.error, r.ok and not r.existing
-            if r.ok then log("UPnP: the router forwards UDP %d to this PC%s", PORT, r.existing and " (already set up)" or "")
-            else log("UPnP UDP %d: %s", PORT, tostring(r.error)) end
-            if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
-            if state.host == h then h.register() end
-        end, "Heroes VII online game")
+        local pending = 2
+        for _, proto in ipairs({ "UDP", "TCP" }) do
+            h7.net.upnp_add(PORT, proto, function(r)
+                local owned = r.ok and not r.existing
+                if state.host ~= h then -- left meanwhile: undo what we just made
+                    if owned then h7.net.upnp_remove(PORT, proto) end
+                    return
+                end
+                h.upnpOwned[proto] = owned
+                if r.ok then
+                    log("UPnP: the router forwards %s %d to this PC%s", proto, PORT, r.existing and " (already set up)" or "")
+                else
+                    log("UPnP %s %d: %s", proto, PORT, tostring(r.error))
+                    h.upnpError = h.upnpError or (proto .. ": " .. tostring(r.error))
+                end
+                if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
+                pending = pending - 1
+                if pending == 0 then h.register() end
+            end, "Heroes VII online game")
+        end
     else
         h.register()
     end
@@ -327,6 +376,7 @@ local function join(g)
     m.SearchResults = {}
     m.SearchResults:add({ GameSettings = s })
     h7.net.set_lan_host(m.SearchResults[1], g.ip, g.port)
+    state.joined = { ip = tostring(g.ip), port = g.port }
     log("Online: joining %s (%s) at %s:%d", g.name, g.id, g.ip, g.port)
     m:JoinSelected(0) -- map check, then JoinOnlineGame -> GetResolvedConnectString -> start ip:port
 end
@@ -362,6 +412,65 @@ for _, f in ipairs({ "NoButtonClicked", "EscapePressed" }) do
         end
     end)
 end
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- Client hardening: a host (or anyone listed by a lobby that doesn't verify) must not be able to make this game
+-- download packages or follow it to another server.
+-- ---------------------------------------------------------------------------------------------------------------
+
+-- AllowDownloads=True in MMH7Engine.ini [IpDrv.TcpNetDriver] (inherited by IpNetDriverStorm). New net drivers are
+-- built from their class defaults, so turning it off there covers every later connection.
+for _, path in ipairs({ "IpDrv.TcpNetDriver", "OnlineSubsystemUPlay.IpNetDriverStorm" }) do
+    local ok, err = pcall(function()
+        local cls = h7.find_class(path)
+        if not cls then error("class not loaded") end
+        cls:get_default().AllowDownloads = false
+    end)
+    if ok then log("Online: package downloads from hosts off (%s)", path)
+    else log("Online: could not turn off downloads for %s: %s", path, tostring(err)) end
+end
+pcall(function() -- drivers that already exist
+    for _, d in ipairs(h7.find_all("Engine.NetDriver")) do d.AllowDownloads = false end
+end)
+
+local TRAVEL_RELATIVE = 2 -- ETravelType: TRAVEL_Absolute 0, TRAVEL_Partial 1, TRAVEL_Relative 2
+local NM_CLIENT = 3       -- ENetMode
+
+-- The server part of a travel URL ("1.2.3.4:7777/Map?opt", "host.name:27015", "1.2.3.4"), or nil for a map URL
+-- ("CouncilHub?listen", "?closed") that stays on the current server.
+local function url_host(url)
+    local s = (tostring(url or ""):match("^[^?#]*") or ""):match("^[^/]*")
+    local host, port = s:match("^(.-):(%d+)$")
+    host = (host or s):lower()
+    if host == "" then return nil end
+    if port or host:match("^%d+%.%d+%.%d+%.%d+$") then return host end
+    if host:match("^[%w%-]+%.[%w%-%.]*%a$") and not host:match("%.u%a+$") then return host end -- name, not Map.umap
+    return nil
+end
+
+local function in_joined_game(pc)
+    if not state.joined then return false end
+    local ok, mode = pcall(function() return pc.WorldInfo.NetMode end)
+    return not ok or mode == NM_CLIENT -- connected to a server (a travel from the menu is the player's own)
+end
+
+-- ClientTravel is a native event (hooks get no arguments and can't block), so the URL is read in PreClientTravel,
+-- which ClientTravel calls first, and the travel the native just queued is replaced by a disconnect afterwards.
+h7.hook("Engine.PlayerController.PreClientTravel", function(pc, args)
+    state.redirect = nil
+    if not mod.settings.block_redirects or args.TravelType == TRAVEL_RELATIVE or not in_joined_game(pc) then return end
+    local host = url_host(args.PendingURL)
+    if host and host ~= state.joined.ip:lower() then state.redirect = { host = host, url = args.PendingURL } end
+end)
+
+h7.hook_post("Engine.PlayerController.ClientTravel", function(pc)
+    local r = state.redirect
+    state.redirect = nil
+    if not r then return end
+    log("Online: blocked the host's redirect to %s (%s); disconnecting", r.host, tostring(r.url))
+    local ok, err = pcall(function() pc:ConsoleCommand("disconnect") end)
+    if not ok then log("Online: disconnect failed: %s", tostring(err)) end
+end)
 
 function on_unload()
     stop_hosting("mod unloaded")

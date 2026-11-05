@@ -466,3 +466,31 @@ Next:
   20 s timeout. Next: friend's Launch.log for the exact reason; retry with matching content.
 - Friend hosting failed: empty Lua list encoded as `{}` -> lobby "mods must be an array". Fixed in the mod
   (`json.array()`) and the lobby (accepts `{}`; H7Lobby branch `fix/empty-lists`).
+
+### Host verification (2026-11-05, OnlineLobby 0.2.0; builds + `build.bat nettest` ALL OK, not yet in game)
+Design and threat model: [docs/ONLINE.md "Host verification"](docs/ONLINE.md#host-verification). The lobby side
+is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after both players run the new DLL
+(OnlineLobby 0.1.0 can't host against it: "token is required").
+- `src/net/crypto.*` (CNG: `Sha256Hex`, `HmacSha256Hex`, `RandomHex`; links `bcrypt.lib`), `src/net/responder.*`
+  (TCP challenge responder thread: exactly 43 bytes in, 65 out, 2 s per connection overall via `select` deadlines,
+  one connection at a time, `SO_EXCLUSIVEADDRUSE`, stop = close listener + `shutdown` the open client, join).
+  Lua: `h7.crypto.sha256/hmac_sha256/random_hex`, `h7.net.responder_start/stop` (owned by the starting mod;
+  `RemoveModNet` stops it on unload). The offline host binds loopback only (`ResponderLoopbackOnly`) so the test
+  never triggers a firewall prompt; `test.challenge(port, line [, half_close])` is the loopback client.
+- Shared vectors in `tests/offline/net.lua` match H7Lobby `test/verify.test.ts` (token 0011..eeff x2 -> ckey
+  00f01b98..., nonce 0123..cdef x2 -> 5794bf2e...).
+- Mod: new token + ckey per registration (also on heartbeat 404/403 re-registration), UPnP maps UDP **and TCP**
+  27015 (ownership per protocol), 403 `{error, ip, port}` -> popup naming the reason, `verified ~= true` -> issue
+  "Host not verified by the lobby".
+- Client hardening: `AllowDownloads = false` on the CDOs of `IpDrv.TcpNetDriver` and
+  `OnlineSubsystemUPlay.IpNetDriverStorm` (+ live `Engine.NetDriver`s). **`PlayerController.ClientTravel` is a
+  `native event`** (hooks get no args, can't block), so redirect blocking reads `PendingURL` in the
+  `PreClientTravel` script event (called first by the native) and post-hooks `ClientTravel` to replace the queued
+  travel with `ConsoleCommand("disconnect")`; only while `WorldInfo.NetMode == NM_Client` after a lobby join,
+  never for `TRAVEL_Relative`. Setting `block_redirects` (default on).
+- With downloads off, a client missing one of the host's packages should now fail the package handshake at once
+  instead of trying to download it (relevant to the two-PC disconnect above).
+- To verify in game: log "Responder: listening ... TCP 27015", "UPnP: ... TCP 27015", "listed ... (verified)";
+  `h7.find_class("IpDrv.TcpNetDriver"):get_default().AllowDownloads` is false in the debug console; leaving ->
+  "Responder: stopped", mappings removed; UPnP off + no TCP forward -> the 403 popup; a normal map transition in a
+  joined match isn't blocked (no "blocked the host's redirect" line); Windows Firewall may prompt once.

@@ -12,8 +12,10 @@ a join to an unreachable host times out cleanly. **Not yet verified: a real matc
 between two PCs.** Where the implementation differs from the plan below: the browser is not the game's join menu (its
 columns are fixed in its Flash movie and all in use) but `dist/mods/OnlineLobby/browser.lua`; the chosen game
 becomes the manager's only search result and joins through `JoinSelected`; lobby entries get a native session record
-from `h7.net.set_lan_host` (0x38 bytes, see `src/lua/bindings.cpp`); the lobby's TCP reachability probe is off (the
-host listens on UDP 27015 only).
+from `h7.net.set_lan_host` (0x38 bytes, see `src/lua/bindings.cpp`); the lobby's plain TCP reachability probe is
+gone (the host's game listens on UDP 27015 only) and was replaced by [host verification](#host-verification): the
+mod answers a TCP challenge on 27015 itself (OnlineLobby 0.2.0, builds and passes `build.bat nettest`; not yet
+verified in game).
 
 ## How the original online flow works
 
@@ -102,11 +104,94 @@ greys out games that don't match.
 The host must accept UDP and TCP 27015. In order of effort:
 
 1. **UPnP** from the mod (covers most home routers).
-2. **Manual port forwarding**, with the lobby probe telling the host whether it worked.
+2. **Manual port forwarding**, with the lobby's TCP challenge ([host verification](#host-verification)) telling
+   the host whether it worked.
 3. **Fallback for strict NAT / CGNAT:** players use a virtual LAN (Tailscale, ZeroTier, Radmin VPN); the lobby can
    accept a manually entered host address for this.
 4. Later, optional: a **UDP relay** on Fly.io (traffic for a turn-based game is small). Hole punching would need
    control over the engine's own socket and is not planned.
+
+## Host verification
+
+A lobby listing means "connect your game to this address", so before 0.2.0 anyone could list fake games: point
+players at a stranger's PC or a hostile host, flood the list, or (over IPv6, which may claim any `ipv4`) evict a
+real host's game. Now a game is listed only if the PC at the listed public IP answers a challenge that needs a
+secret the registering mod generated.
+
+```
+host mod                                      entry Worker (stateless)              Lobby Durable Object
+ token = 32 random bytes → 64 hex
+ ckey  = HMAC(token, "H7LOBBY challenge key")
+ TCP responder :27015 (own thread, key ckey)
+ UPnP map UDP 27015 + TCP 27015
+ POST /v1/games {..., token}  ──────────────▶ rate-limit binding, validate body
+                                              ───── precheck {ip, hostIp} ─────▶ 10/min per IP(/48), bans, caps
+                                              TCP connect hostIp:port (3 s)
+            ◀──── "H7LOBBY 1 <nonce 32 hex>\n" ────
+            ──── hex(HMAC(ckey, nonce)) "\n" ─────▶ compare (constant time)
+                                              ───── register (X-Host-Verified) ─▶ store verified:true, list
+ 201 {id, ip, port, verified:true}  ◀────────  or 403 {error: "...TCP 27015...", ip, port}
+ heartbeat / DELETE with Bearer token (heartbeats must come from the registering IP)
+ stop: responder off, UPnP unmapped (if this mod made the mapping)
+```
+
+Protocol (identical in H7Lobby `src/verify.ts`, its Node reference `test/responder.mjs` and the engine's
+`src/net/responder.cpp`; all values ASCII, keys are the bytes of the hex strings):
+
+- `token`: 64 lowercase hex characters, new for every registration (`h7.crypto.random_hex(32)`), sent once over
+  HTTPS. The lobby keeps only its SHA-256 (Bearer auth for heartbeat/DELETE) and `ckey`.
+- `ckey = hex(HMAC-SHA256(key = token, msg = "H7LOBBY challenge key"))`; only `ckey` is given to the responder, so
+  the open TCP port never acts as an oracle for the Bearer secret.
+- Challenge: `"H7LOBBY 1 " + nonce + "\n"`, nonce 32 lowercase hex characters, **43 bytes**. Reply:
+  `hex(HMAC-SHA256(key = ckey, msg = nonce)) + "\n"`, **65 bytes**. One exchange per connection; anything else, or
+  silence for 2 s, is closed without a byte.
+- Shared test vector (pinned in `tests/offline/net.lua` and H7Lobby `test/verify.test.ts`):
+  token `00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff` →
+  ckey `00f01b980cb2a9a08e109cfe39e64298fb77586162ba8ea27efb66ec34edc3cc`;
+  nonce `0123456789abcdef0123456789abcdef` →
+  reply `5794bf2e5e14ea5f4f7eeca473024143a18e94fa4dd32d5274dd6219a3720350`.
+
+Why it holds: replay is useless (128-bit nonce, per-game key); reflection is impossible (the Worker never answers
+challenges); only the owner of an IP can register a game for it, so stranger IPs can't be listed and "replace the
+oldest of 3 games per IP" can't be used against someone else. The game listens on UDP 27015 only (measured
+2026-11-05), so TCP 27015 is free for the responder; it runs in C++ on its own thread because the game thread
+(and Lua) pauses while the window is unfocused, and hosts alt-tab while waiting.
+
+In the mod (`dist/mods/OnlineLobby/main.lua`): the responder starts with the new `ckey` before each registration
+(also the re-registration after a heartbeat 404 or 403) and stops, with the UPnP mappings this mod made, when
+hosting ends; a failed challenge shows a popup naming the reason and asking to forward UDP and TCP 27015.
+
+Client side, independent of the lobby:
+
+- A game the lobby didn't mark `verified` (a custom or older lobby) gets the compatibility issue "Host not
+  verified by the lobby", so joining it always asks first.
+- `AllowDownloads` (true in `MMH7Engine.ini` `[IpDrv.TcpNetDriver]`, inherited by `IpNetDriverStorm`) is set to
+  false on both net drivers' class defaults (and live drivers) at mod load, so a host can't make the client
+  download packages.
+- While connected to a game joined through the lobby, a `ClientTravel` to a different host is cancelled
+  (setting `block_redirects`, on by default). `ClientTravel` is a native event (hooks get no arguments and can't
+  block), so the mod reads the URL in `PreClientTravel`, which the native calls first, and replaces the queued
+  travel with `disconnect` in a post-hook on `ClientTravel`. Relative travel (map changes on the same server)
+  always passes. Not yet verified in game.
+
+### Residual risks (not solved here)
+
+- Someone with N public IPv4 addresses that accept inbound TCP can list 3N junk games (about 100 addresses fill the
+  300-game cap); the lobby owner bans ranges (admin routes, H7Lobby README).
+- Verification is point-in-time: a host that keeps heart-beating from the same IP stays listed even if its game
+  died. The 60 s TTL bounds a dead host and IP pinning bounds address drift; a periodic re-challenge is possible
+  later (the lobby stores `ckey`).
+- The TCP check proves control of the address and that TCP 27015 is forwarded, not that UDP 27015 is. UPnP maps
+  both and the popup names both; a join to a host without UDP still times out cleanly.
+- The free plan's 100k requests/day can be burned by hammering any route (workers.dev has no WAF); the rate-limit
+  binding protects the Durable Object, not the quota. Fix if needed: custom domain + WAF rule.
+- Host IPs are public to anyone calling `GET /v1/games` (inherent to direct connections, same as LAN), and the
+  game's own UE3 netcode on UDP 27015 is reachable by anyone who learns the IP; the mod can't fix UE3.
+- The game's mesh beacon (`H7MeshBeaconHost`) also uses TCP 27015 in the original online flow. It doesn't listen
+  on the LAN path the mod uses (measured), but if it ever does while the responder holds the port, one of them
+  fails to bind (the responder reports "already in use" and the lobby then refuses the game).
+- Windows Firewall may ask the host once whether the game may accept connections (the responder listens on every
+  interface); declining blocks the challenge.
 
 ## Phases
 

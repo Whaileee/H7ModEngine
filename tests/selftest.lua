@@ -93,6 +93,15 @@ check("json round trip", function()
     return h7.json.decode(s).b[2] == h7.json.null
 end)
 check("local_ip", function() return h7.net.local_ip() or "offline" end)
+check("crypto", function()
+    assert(h7.crypto.sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    assert(#h7.crypto.random_hex(16) == 32)
+    return h7.crypto.hmac_sha256("Jefe", "what do ya want for nothing?"):sub(1, 8) == "5bdcc146"
+end)
+check("net drivers no downloads", function() -- OnlineLobby turns AllowDownloads off at load
+    local d = h7.find_class("IpDrv.TcpNetDriver"):get_default()
+    return d.AllowDownloads == false
+end)
 check("http get dispatched", function()
     return h7.http.get("https://example.com/", function(res)
         h7.log(("[selftest] http get           %s  %s"):format(res.ok and res.status == 200 and "OK  " or "FAIL",
