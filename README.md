@@ -29,8 +29,9 @@ end)
 - **Events and timers**: every frame, map changes, mods loaded or toggled; timers on game time.
 - **Mod management**: per-mod manifests, load order, isolated globals, saved data, hot reload, and a Mods menu
   in the game's main menu (built on the game's own map selection screen) to enable and disable mods live.
-- **Development tools**: an `exec` folder that runs Lua in the running game, a log of everything mods do, and an
-  index of every engine object written at startup.
+- **Development tools**: an in-game debug console (Lua and game commands, multi-line scripts, suggestions with
+  typed signatures, live log), an `exec` folder that runs Lua in the running game, a log of everything mods do,
+  and an index of every engine object written at startup.
 - **Safe failures**: Lua errors are logged with a stack trace and never take the game down.
 
 ## Requirements
@@ -134,13 +135,22 @@ The details are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#architecture).
 | `tests/` | In-game test and tracing scripts, and the tools that run them |
 | `re/` | Reverse-engineering helpers (PE and Flash movie inspection) |
 | `third_party/lua` | Lua 5.4.7 (git submodule) |
+| `LICENSE` | Apache License 2.0 |
 | `RESUME.md` | Running engineering notes: findings, verified layouts, history of in-game runs |
 
 ## Status
 
-Version 0.1.0. The engine, hooks and all example mods are verified in game on v2.2.1. The API may still change.
+Version 0.1.1. The engine, hooks, the debug console and all example mods are verified in game on v2.2.1. The API
+may still change.
 
 ## Disclaimer
 
 H7ModEngine is an unofficial fan project. It is not affiliated with or endorsed by Ubisoft. Might & Magic and
 Heroes are trademarks of Ubisoft Entertainment. Use mods at your own risk and keep backups of your saves.
+
+## License
+
+H7ModEngine is licensed under the [Apache License 2.0](LICENSE). This covers the engine, its tools, the
+bundled and example mods, and the documentation in this repository. Lua (`third_party/lua`) is MIT-licensed by
+Lua.org, PUC-Rio. Might & Magic Heroes VII and its content belong to Ubisoft and are not covered by this license;
+the generated class reference (`tools/docs/sdk/*.json`) lists the game's declarations only, for reference.

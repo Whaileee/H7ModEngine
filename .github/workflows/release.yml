@@ -58,6 +58,7 @@ jobs:
           Get-ChildItem dist/mods -Directory | Where-Object Name -notin 'ModManager', 'DebugConsole' |
             ForEach-Object { Copy-Item -Recurse $_.FullName $root }
           Copy-Item docs/API.md examples/H7ModEngine/
+          Copy-Item LICENSE examples/H7ModEngine/
           Get-ChildItem examples -Recurse -Filter CLAUDE.md | Remove-Item
           Compress-Archive -Path examples/* -DestinationPath H7ModEngine-examples.zip
 
