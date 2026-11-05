@@ -64,6 +64,7 @@ static DWORD WINAPI InitThread(LPVOID) {
     Log("H7ModEngine starting; game image %p-%p", (void*)mem::g_game.base, (void*)mem::g_game.end);
     InstallBundledFiles(); // default ini + ModManager + DebugConsole, so a release is just dinput8.dll
     ConfigDefault(L"Console", L"Key", L"Tilde"); // key that opens the DebugConsole mod (see the default ini)
+    ConfigDefault(L"Online", L"LobbyUrl", L"https://h7-lobby.whaileee.workers.dev"); // H7Lobby (online games)
 
     // The executable is packed: wait until the engine has unpacked and built its name/object tables.
     if (!WaitFor("GNames", 300000, [] { return ue3::FindGNames(); })) return 0;

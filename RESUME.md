@@ -419,4 +419,6 @@ Next:
 2. The bundled OnlineLobby mod (hooks in docs/ONLINE.md). First in-game checks it depends on: can a pre-hook change
    `CreateOnlineGame`'s `IsLAN` arg; dump a LAN search result's `PlatformData` (FSessionInfo layout) so the engine
    can build lobby results (`make_lan_result`, not written yet); direct join `start ip:27015` between two PCs.
-3. Deploy H7Lobby (user: Cloudflare account ready; plan is dashboard "Import a repository" once it is on GitHub).
+3. ~~Deploy H7Lobby~~ done 2026-11-05: live at https://h7-lobby.whaileee.workers.dev (Workers Builds from
+   GitHub Whaileee/H7Lobby `main`); register/list/heartbeat/delete round trip checked in production. Engine default
+   `[Online] LobbyUrl` (default ini + `ConfigDefault` in dllmain.cpp).

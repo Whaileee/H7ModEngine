@@ -597,6 +597,11 @@ multiplier=1.5
 ; (added with the default Tilde when missing; read while the game runs)
 Key=Tilde
 
+[Online]
+; Lobby server for online multiplayer games (added with this default when missing); players who want to
+; find each other must use the same one. Read it with h7.config("Online", "LobbyUrl").
+LobbyUrl=https://h7-lobby.whaileee.workers.dev
+
 [Dev]
 ; Write names.txt / objects.txt to dumps\ at startup (default 1)
 DumpSDK=1
