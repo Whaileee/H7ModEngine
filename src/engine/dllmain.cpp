@@ -76,7 +76,16 @@ static DWORD WINAPI InitThread(LPVOID) {
         }))
         return 0;
     Log("Script loaded: %d names, %d objects", ue3::NameCount(), ue3::ObjectCount());
-    if (!ue3::Calibrate()) {
+    // The Touch function object can exist before Actor's field list is linked (2026-11-05: calibration failed at
+    // ~7k objects and disabled every mod). Retry for up to a minute; a final attempt logs what is missing.
+    ue3::SetCalibrationQuiet(true);
+    bool calibrated = WaitFor("engine layout", 60000, [] {
+        ue3::InvalidateLookupCache();
+        return ue3::Calibrate();
+    });
+    ue3::SetCalibrationQuiet(false);
+    if (calibrated) Log("Calibrated at %d objects", ue3::ObjectCount());
+    if (!calibrated && !ue3::Calibrate()) {
         ue3::DumpProbe(EnginePath(L"dumps"));
         Log("Engine layout calibration failed; mods disabled. See dumps\\probe.txt");
         return 0;

@@ -431,8 +431,14 @@ local_ip, and `h7.http.get("https://example.com/")` -> 200, 577 bytes, callback 
   (`DestroyOnlineGame` freed heap garbage; the first crash looked like a Scaleform render-thread null vcall).
   Fixed; the timeout now shows the normal popup.
 - `h7.game_content`: 29 packs / 593 packages on the user's install, ~70 ms. Edition = base/modded.
-- UPnP stopped answering on the user's router after 17:40 (Windows' own NATUPnP object finds nothing either);
-  not a code issue. The engine now serialises UPnP requests and waits 12 s.
+- UPnP: Windows' IUPnPNAT found no router on the user's PC (VMware adapter `00:50:56:...` present) although the
+  router's UPnP works: the game's own Storm layer had mapped UDP 27015/27416 ("Heroes VII <mac>"). Replaced by a
+  direct SSDP + SOAP client in `src/net/upnp.cpp` (discovery bound to the LAN address); it checks
+  GetSpecificPortMappingEntry first and reports an existing mapping to this PC as `existing` (the mod then never
+  removes it). Verified in game 2026-11-05 20:09: "already set up", game listed, no popup.
+- Startup race (2026-11-05 20:05): `Function Engine.Actor.Touch` existed before Actor's field list was linked, so the
+  one-shot calibration failed and disabled all mods. dllmain now retries calibration for up to 60 s (quiet);
+  verified: "Calibrated at 7246 objects".
 - Browser: the game's join menu has fixed columns (duel: Host/Map/Position/NAT; skirmish adds Players/Turns/Skills,
   all used; NAT is icon-only), so at the user's choice Online > Join opens `browser.lua` on the map selection window
   (like ModManager): Host | Map | Players | Version | Status, map picture in the frame (content scanner thumbnail +

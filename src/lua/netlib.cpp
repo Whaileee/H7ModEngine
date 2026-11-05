@@ -611,6 +611,7 @@ static int Http_cancel(lua_State* L) {
 static void PushUpnp(lua_State* L, const net::UpnpResult& r) {
     lua_newtable(L);
     lua_pushboolean(L, r.ok); lua_setfield(L, -2, "ok");
+    if (r.existing) { lua_pushboolean(L, 1); lua_setfield(L, -2, "existing"); }
     if (!r.externalIp.empty()) { lua_pushstring(L, r.externalIp.c_str()); lua_setfield(L, -2, "external_ip"); }
     if (!r.internalIp.empty()) { lua_pushstring(L, r.internalIp.c_str()); lua_setfield(L, -2, "internal_ip"); }
     if (!r.error.empty()) { lua_pushstring(L, r.error.c_str()); lua_setfield(L, -2, "error"); }

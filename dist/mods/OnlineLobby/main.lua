@@ -137,7 +137,7 @@ local function stop_hosting(reason)
     if h.timer then h7.cancel(h.timer) end
     log("Online game %s removed from the lobby (%s)", h.id or "(not listed yet)", reason)
     if h.id then api("DELETE", "/v1/games/" .. h.id, nil, h.token) end
-    if h.upnpOk then h7.net.upnp_remove(PORT, "UDP") end
+    if h.upnpOwned then h7.net.upnp_remove(PORT, "UDP") end -- not a mapping the game made itself
 end
 
 local function player_count()
@@ -217,8 +217,8 @@ local function publish(isDuel)
     -- The host's game listens on UDP 27015 only (no TCP listener, measured 2026-11-05), so only UDP is mapped.
     if h.upnp then
         h7.net.upnp_add(PORT, "UDP", function(r)
-            h.upnpOk, h.upnpError = r.ok, r.error
-            if r.ok then log("UPnP: the router forwards UDP %d to this PC", PORT)
+            h.upnpOk, h.upnpError, h.upnpOwned = r.ok, r.error, r.ok and not r.existing
+            if r.ok then log("UPnP: the router forwards UDP %d to this PC%s", PORT, r.existing and " (already set up)" or "")
             else log("UPnP UDP %d: %s", PORT, tostring(r.error)) end
             if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
             if state.host == h then h.register() end
