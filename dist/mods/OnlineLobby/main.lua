@@ -137,10 +137,7 @@ local function stop_hosting(reason)
     if h.timer then h7.cancel(h.timer) end
     log("Online game %s removed from the lobby (%s)", h.id or "(not listed yet)", reason)
     if h.id then api("DELETE", "/v1/games/" .. h.id, nil, h.token) end
-    if h.upnp then
-        h7.net.upnp_remove(PORT, "UDP")
-        h7.net.upnp_remove(PORT, "TCP")
-    end
+    if h.upnpOk then h7.net.upnp_remove(PORT, "UDP") end
 end
 
 local function player_count()
@@ -205,27 +202,27 @@ local function publish(isDuel)
                 return
             end
             h.id, h.token = data.id, data.token
-            log("Online game listed in the lobby as %s at %s:%d (reachable: %s)", data.id, data.ip, data.port, tostring(data.reachable))
-            if data.reachable == false then
-                popup("Your game is listed online, but other players can't reach it yet: open port " .. PORT
-                    .. " (UDP and TCP) on your router or firewall for this PC.")
+            log("Online game listed in the lobby as %s at %s:%d", data.id, data.ip, data.port)
+            if not h.upnpOk then
+                -- The lobby can't test UDP, so this is the host's only hint that nobody outside can connect.
+                local why = h.upnp and ("your router didn't open it automatically (" .. tostring(h.upnpError) .. ")")
+                    or "opening it automatically (UPnP) is off in the OnlineLobby settings"
+                popup(("Your game is listed online. Players outside your network can join only if UDP port %d "
+                    .. "reaches this PC: %s. Forward UDP %d to %s in your router, or play over a virtual LAN.")
+                    :format(PORT, why, PORT, h7.net.local_ip() or "this PC"))
             end
         end)
     end
 
-    local pending = h.upnp and 2 or 0
-    local function upnp_done(proto)
-        return function(r)
-            if r.ok then log("UPnP: router forwards %s %d to this PC", proto, PORT)
-            else log("UPnP %s: %s", proto, tostring(r.error)) end
-            if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
-            pending = pending - 1
-            if pending == 0 and state.host == h then h.register() end
-        end
-    end
+    -- The host's game listens on UDP 27015 only (no TCP listener, measured 2026-11-05), so only UDP is mapped.
     if h.upnp then
-        h7.net.upnp_add(PORT, "UDP", upnp_done("UDP"), "Heroes VII online game")
-        h7.net.upnp_add(PORT, "TCP", upnp_done("TCP"), "Heroes VII online game")
+        h7.net.upnp_add(PORT, "UDP", function(r)
+            h.upnpOk, h.upnpError = r.ok, r.error
+            if r.ok then log("UPnP: the router forwards UDP %d to this PC", PORT)
+            else log("UPnP UDP %d: %s", PORT, tostring(r.error)) end
+            if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
+            if state.host == h then h.register() end
+        end, "Heroes VII online game")
     else
         h.register()
     end

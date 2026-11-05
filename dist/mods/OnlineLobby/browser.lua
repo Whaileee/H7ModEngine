@@ -269,8 +269,21 @@ h7.hook(SELECT .. "Update", function()
     if ui.showing then restore() end -- the game opens the window for maps
 end)
 
+-- The mod unloads (turned off, a setting changed, or a hot reload): put the window back. If it is loaded again
+-- while the window is still open, fill it again instead of leaving the bare map window (empty, "Generate map").
 function B.close()
-    if ui.showing then restore() end
+    if ui.showing then
+        ui.reopen = true
+        restore()
+    end
+end
+
+if ui.reopen then
+    ui.reopen = nil
+    h7.after(0.2, function()
+        local w = window()
+        if w and w:GetBool("visible") and B.fetch then refresh() end
+    end)
 end
 
 return B
