@@ -4,12 +4,12 @@
 -- directly. The lobby server (H7Lobby) only lists the games:
 --   hosting  CreateOnlineGame(IsLAN=false) is switched to LAN, then the game is registered with the lobby
 --            (UPnP opens port 27015 first) and kept alive with a heartbeat until it starts or the host leaves.
---   finding  the Online browser runs a LAN search and adds the lobby's games to the results. Each entry gets a
---            native LAN session record pointing at the host (h7.net.set_lan_host), so joining goes through the
---            game's normal JoinOnlineGame -> GetResolvedConnectString -> "start ip:port".
---   checking every listed game shows the host's edition (base / modded) and engine version; a game whose
---            version, engine, content packs (CookedPC) or gameplay mods differ is marked [!], and joining it
---            asks first, naming what differs.
+--   finding  Online > Join opens browser.lua: the map selection window (like the Mods menu) listing the lobby's
+--            games: Host | Map | Players | Version (edition + engine) | Status (Compatible / Differs).
+--   joining  the chosen game becomes the manager's only search result, with a native LAN session record pointing
+--            at the host (h7.net.set_lan_host), and goes through the game's JoinSelected -> JoinOnlineGame ->
+--            GetResolvedConnectString -> "start ip:port". A game whose version, engine, edition, content packs
+--            (CookedPC) or gameplay mods differ asks first, naming what differs.
 -- Design notes: docs/ONLINE.md in the H7ModEngine repository. Lobby API: README of H7Lobby.
 
 local json = h7.json
@@ -21,16 +21,9 @@ local MP = "MMH7Game.H7MultiplayerGameManager."
 
 local state = {
     content = nil,         -- h7.game_content() result (community content packs in CookedPC)
-    browsing = false,      -- the browser was opened from an Online entry (not LAN)
-    search = 0,            -- increments per search, so late lobby replies for an old search are ignored
-    listed = {},           -- lobby game ids already added to the current results
-    entries = {},          -- { settings = H7OnlineGameSettings, game = lobby entry, issues = {...} } of this search
-    lobby = nil,           -- games from the last lobby reply (nil while waiting)
-    lobbyApi = nil,        -- api version the lobby reported
     hostRequested = false, -- an Online game is being created
     host = nil,            -- { id, token, timer, ... } while our game is in the lobby
-    confirm = nil,         -- { index } while the "join anyway?" popup is open
-    confirmed = nil,       -- index the player agreed to join anyway
+    confirm = nil,         -- the lobby game while the "join anyway?" popup is open
 }
 
 local function log(fmt, ...) h7.log(fmt:format(...)) end
@@ -262,137 +255,104 @@ h7.on("map_loaded", function(map)
 end)
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Finding games
+-- Finding games: Online > Join opens the browser (browser.lua, the map selection window) with the lobby's games
 -- ---------------------------------------------------------------------------------------------------------------
 
--- "Ana | modded | engine 0.1.1", prefixed with [!] when something differs.
-local function display_name(g, issues)
-    return ("%s%s | %s | engine %s"):format(#issues > 0 and "[!] " or "", g.name, g.edition or "base",
-        tostring(g.engine_version))
-end
+local browser = mod.require("browser")
 
-local function add_lobby_games(m)
-    if not state.lobby then return 0 end
-    local added = 0
-    for _, g in ipairs(state.lobby) do
-        local issues = compatibility(g)
-        if not state.listed[g.id] and (mod.settings.show_mismatched or #issues == 0) then
-            local ok, err = pcall(function()
-                local st = type(g.settings) == "table" and g.settings or {}
-                local s = h7.new_object("H7OnlineGameSettings")
-                s.bIsLanMatch = true -- joins through the LAN path, never Ubisoft's
-                s:SetNumPublicConnections(g.slots)
-                s.NumOpenPublicConnections = math.max(0, g.slots - (g.players or 1))
-                s:SetServerName(display_name(g, issues))
-                s:SetMapFilepath(g.map)
-                s:SetMapInfoNumber(g.map_info or 0)
-                s:SetGameType(g.type == "duel" and 1 or 0)
-                s:SetTurnType(tonumber(st.turn_type) or 0)
-                s:SetSkillType(tonumber(st.skill_type) or 0)
-                s:SetNumClosedSlots(tonumber(st.closed_slots) or 0)
-                s:SetNumAISlots(tonumber(st.ai_slots) or 0)
-                s:SetIsSavedGame(st.saved_game == true)
-                if type(st.rmg) == "string" and st.rmg ~= "" then s:SetRMGString(st.rmg) end
-                local n = m.SearchResults:add({ GameSettings = s })
-                h7.net.set_lan_host(m.SearchResults[n], g.ip, g.port)
-                state.entries[#state.entries + 1] = { settings = s, game = g, issues = issues }
-            end)
-            if ok then
-                state.listed[g.id] = true
-                added = added + 1
-                if #issues > 0 then log("Online: %s (%s) differs: %s", g.name, g.id, table.concat(issues, "; ")) end
-            else
-                log("Online: could not list lobby game %s: %s", tostring(g.id), tostring(err))
-            end
-        end
-    end
-    return added
-end
+browser.compatibility = compatibility
 
-local function fetch_lobby(isDuel)
-    state.search = state.search + 1
-    local search = state.search
-    state.lobby, state.listed, state.entries = nil, {}, {}
+function browser.fetch(isDuel, fn)
     api("GET", "/v1/games?type=" .. (isDuel and "duel" or "skirmish"), nil, nil, function(res, data)
-        if search ~= state.search then return end -- an older search
         if not (res.status == 200 and data and type(data.games) == "table") then
-            log("Online: lobby unavailable: %s", data and data.error or res.error or ("HTTP " .. res.status))
-            state.lobby = {}
-            return
+            local why = data and data.error or res.error or ("HTTP " .. res.status)
+            log("Online: lobby unavailable: %s", why)
+            return fn(nil, why)
         end
-        state.lobbyApi = data.api
         if data.api ~= nil and data.api ~= LOBBY_API then
             log("Online: the lobby speaks API %s, this mod %d; listing what it understands", tostring(data.api), LOBBY_API)
         end
-        state.lobby = data.games
-        log("Online: %d game(s) in the lobby", #data.games)
-        -- If the game already showed its (LAN) results, add ours and refresh the list.
-        local m = manager()
-        if m and not m.bIsSearching and add_lobby_games(m) > 0 then m:StartFilteringBrowserList() end
+        local games = {}
+        for _, g in ipairs(data.games) do
+            if mod.settings.show_mismatched or #compatibility(g) == 0 then games[#games + 1] = g end
+        end
+        log("Online: %d game(s) in the lobby, %d listed", #data.games, #games)
+        fn(games)
     end)
 end
 
-for _, f in ipairs({ "MPJoinINET", "MPDuelJoinINET" }) do
-    h7.hook("MMH7Game.H7MainMenuCntl." .. f, function() state.browsing = true end)
-end
-for _, f in ipairs({ "MPJoinLAN", "MPDuelJoinLAN" }) do
-    h7.hook("MMH7Game.H7MainMenuCntl." .. f, function() state.browsing = false end)
+-- Map name, turn type and skill system as the game names them (from a settings object, like its own browser).
+function browser.setting_texts(g)
+    local st = type(g.settings) == "table" and g.settings or {}
+    local ok, turns, skills, map = pcall(function()
+        local s = h7.new_object("H7OnlineGameSettings")
+        s:SetTurnType(tonumber(st.turn_type) or 0)
+        s:SetSkillType(tonumber(st.skill_type) or 0)
+        s:SetMapFilepath(tostring(g.map))
+        s:SetMapInfoNumber(tonumber(g.map_info) or 0)
+        s:SetGameType(g.type == "duel" and 1 or 0) -- duel maps are localised in another section
+        return s:GetTurnTypeAsStringLocalized(), s:GetSkillTypeAsStringLocalized(), s:GetMapNameLocalized()
+    end)
+    if ok then return turns, skills, map end
 end
 
-h7.hook(MP .. "SearchOnlineGames", function(self, args)
-    if not args.IsLAN then
-        state.browsing = true
-        args.IsLAN = true -- search the LAN too (and use the game's LAN result handling)
-    end
-    if state.browsing and not self.bIsSearching then fetch_lobby(args.IsDuel) end
-end)
-
--- The LAN search ends with StartFilteringBrowserList (drops the other game type, fills the browser).
-h7.hook(MP .. "StartFilteringBrowserList", function(self)
-    if state.browsing then add_lobby_games(self) end
-end)
+for _, f in ipairs({ { "MPJoinINET", false }, { "MPDuelJoinINET", true } }) do
+    h7.hook("MMH7Game.H7MainMenuCntl." .. f[1], function(cntl)
+        browser.open(cntl, f[2])
+        return true -- instead of the game's (Ubisoft) browser
+    end)
+end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Joining: ask before joining a game that differs
+-- Joining: one search result that points at the host, joined through the game's own JoinSelected
 -- ---------------------------------------------------------------------------------------------------------------
 
-local function entry_at(m, index) -- index: the game's 0-based SelectedIndex
-    local ok, settings = pcall(function() return m.SearchResults[index + 1].GameSettings end)
-    if not ok or not settings then return nil end
-    for _, e in ipairs(state.entries) do
-        if e.settings == settings then return e end
-    end
+local function join(g)
+    local m = manager()
+    if not m then return end
+    local st = type(g.settings) == "table" and g.settings or {}
+    local s = h7.new_object("H7OnlineGameSettings")
+    s.bIsLanMatch = true -- joins through the LAN path, never Ubisoft's
+    s:SetNumPublicConnections(g.slots)
+    s.NumOpenPublicConnections = math.max(0, g.slots - (g.players or 1))
+    s:SetServerName(g.name)
+    s:SetMapFilepath(g.map)
+    s:SetMapInfoNumber(g.map_info or 0)
+    s:SetGameType(g.type == "duel" and 1 or 0)
+    s:SetTurnType(tonumber(st.turn_type) or 0)
+    s:SetSkillType(tonumber(st.skill_type) or 0)
+    s:SetNumClosedSlots(tonumber(st.closed_slots) or 0)
+    s:SetNumAISlots(tonumber(st.ai_slots) or 0)
+    s:SetIsSavedGame(st.saved_game == true)
+    if type(st.rmg) == "string" and st.rmg ~= "" then s:SetRMGString(st.rmg) end
+    m.SearchResults = {}
+    m.SearchResults:add({ GameSettings = s })
+    h7.net.set_lan_host(m.SearchResults[1], g.ip, g.port)
+    log("Online: joining %s (%s) at %s:%d", g.name, g.id, g.ip, g.port)
+    m:JoinSelected(0) -- map check, then JoinOnlineGame -> GetResolvedConnectString -> start ip:port
 end
 
 local MAX_LINES = 12
 
-h7.hook(MP .. "JoinSelected", function(self, args)
-    local index = args.SelectedIndex
-    if state.confirmed == index then -- the player chose "Join anyway"
-        state.confirmed = nil
-        return
-    end
-    local e = entry_at(self, index)
-    if not e or #e.issues == 0 then return end
+function browser.join(g, issues)
+    if #issues == 0 then return join(g) end
     local p = request_popup()
-    if not p then return end -- can't ask: let the game join
+    if not p then return join(g) end -- can't ask
     local lines = {}
-    for i = 1, math.min(#e.issues, MAX_LINES) do lines[i] = "- " .. e.issues[i] end
-    if #e.issues > MAX_LINES then lines[#lines + 1] = ("- and %d more (see the engine log)"):format(#e.issues - MAX_LINES) end
-    log("Online: asking before joining %s: %s", e.game.name, table.concat(e.issues, "; "))
-    state.confirm = { index = index }
+    for i = 1, math.min(#issues, MAX_LINES) do lines[i] = "- " .. issues[i] end
+    if #issues > MAX_LINES then lines[#lines + 1] = ("- and %d more (see the engine log)"):format(#issues - MAX_LINES) end
+    log("Online: asking before joining %s: %s", g.name, table.concat(issues, "; "))
+    state.confirm = g
     p:YesNoPopup(("This game may not be compatible with yours and could go out of sync:\n%s\n\nJoin anyway?")
         :format(table.concat(lines, "\n")), "Join anyway", "Cancel")
-    return true -- wait for the answer
-end)
+end
 
 h7.hook_post("MMH7Game.H7GFxRequestPopup.YesButtonClicked", function()
-    local c = state.confirm
-    if not c then return end
+    local g = state.confirm
+    if not g then return end
     state.confirm = nil
-    state.confirmed = c.index
     log("Online: joining anyway")
-    h7.after(0, function() manager():JoinSelected(c.index) end)
+    h7.after(0, function() join(g) end)
 end)
 
 for _, f in ipairs({ "NoButtonClicked", "EscapePressed" }) do
@@ -406,6 +366,7 @@ end
 
 function on_unload()
     stop_hosting("mod unloaded")
+    browser.close()
 end
 
 log("OnlineLobby ready (lobby %s)", LOBBY)

@@ -433,11 +433,16 @@ local_ip, and `h7.http.get("https://example.com/")` -> 200, 577 bytes, callback 
 - `h7.game_content`: 29 packs / 593 packages on the user's install, ~70 ms. Edition = base/modded.
 - UPnP stopped answering on the user's router after 17:40 (Windows' own NATUPnP object finds nothing either);
   not a code issue. The engine now serialises UPnP requests and waits 12 s.
-- The browser's Host column truncates long names; the user wants a separate version column. Rows are built in
-  ActionScript from fixed fields, so a real column needs a patched Flash movie (open).
+- Browser: the game's join menu has fixed columns (duel: Host/Map/Position/NAT; skirmish adds Players/Turns/Skills,
+  all used; NAT is icon-only), so at the user's choice Online > Join opens `browser.lua` on the map selection window
+  (like ModManager): Host | Map | Players | Version | Status, map picture in the frame (content scanner thumbnail +
+  `mMapThumbnail:SwitchStreamingTo`, `PerformUpdate` until `IsTextureReady`), description + "Compatible with your
+  game." / differences below. Map names need `SetGameType` (duel maps localise elsewhere). Verified in game
+  2026-11-05 (both joins). The map window's own `updateThumbnail` runs every frame while open (normal). A screen
+  flicker the user saw turned out to be their monitor.
 
 Next:
-1. Two-PC test of a real online match. Version column (Flash patch) if the user wants it.
+1. Two-PC test of a real online match.
 2. (done, see above) The bundled OnlineLobby mod (hooks in docs/ONLINE.md). Found 2026-11-05: for LAN queries
    `StartFilteringBrowserList` only filters by game type and calls `InitializeBrowserList(SearchResults)` (no mesh
    beacon), so lobby entries can be appended to `SearchResults` before that. First in-game checks it depends on: can a pre-hook change

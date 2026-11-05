@@ -6,9 +6,12 @@ community lobby server replace them, without patching game code.
 
 Status (2026-11-05): implemented as the bundled `OnlineLobby` mod (`dist/mods/OnlineLobby`) and the H7Lobby Worker
 (https://h7-lobby.whaileee.workers.dev). Verified in game on one PC: the Online menu opens, hosting goes through the
-LAN path and is listed, the browser shows lobby games with edition, engine version and compatibility, the "join
-anyway?" prompt works, and a join to an unreachable host times out cleanly. **Not yet verified: a real match
-between two PCs.** Where the implementation differs from the plan below: lobby entries get a native session record
+LAN path and is listed, Online > Join opens a lobby browser built on the map selection window (Host | Map | Players
+| Version | Status, the map picture, the description and every difference), the "join anyway?" prompt works, and
+a join to an unreachable host times out cleanly. **Not yet verified: a real match
+between two PCs.** Where the implementation differs from the plan below: the browser is not the game's join menu (its
+columns are fixed in its Flash movie and all in use) but `dist/mods/OnlineLobby/browser.lua`; the chosen game
+becomes the manager's only search result and joins through `JoinSelected`; lobby entries get a native session record
 from `h7.net.set_lan_host` (0x38 bytes, see `src/lua/bindings.cpp`); the lobby's TCP reachability probe is off (the
 host listens on UDP 27015 only).
 

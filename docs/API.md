@@ -651,7 +651,7 @@ The complete reference, with every parameter, return value and error, is in the
 |---|---|
 | DebugConsole | The in-game Lua console: drawing on the Canvas every frame, typed text from `Console.InputChar`, reading the ini, listing exec functions by reflection |
 | ModManager | The main menu's Mods entry, the mod list and the settings controls: adding Flash clips to a game window and reading mouse input |
-| OnlineLobby | Online multiplayer through the community lobby (enabled by default): changing hook arguments, HTTP + JSON, UPnP, adding entries to the game's server browser, asking with the game's own popup |
+| OnlineLobby | Online multiplayer through the community lobby (enabled by default): changing hook arguments, HTTP + JSON, UPnP, reusing the map selection window as a game browser (with map pictures), joining through the game's own code, asking with the game's own popup |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |
