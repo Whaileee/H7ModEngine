@@ -84,4 +84,19 @@ end)
 
 -- Calling a UnrealScript function through ProcessEvent.
 check("call function", function() return pc:GetHumanReadableName() end)
+
+-- Networking (full offline coverage: build.bat nettest online). Here: the API exists in game and callbacks
+-- come back on the game thread.
+check("json round trip", function()
+    local s = h7.json.encode({ a = 1, b = { true, h7.json.null }, c = h7.json.array() })
+    assert(s == '{"a":1,"b":[true,null],"c":[]}', s)
+    return h7.json.decode(s).b[2] == h7.json.null
+end)
+check("local_ip", function() return h7.net.local_ip() or "offline" end)
+check("http get dispatched", function()
+    return h7.http.get("https://example.com/", function(res)
+        h7.log(("[selftest] http get           %s  %s"):format(res.ok and res.status == 200 and "OK  " or "FAIL",
+            res.error or (res.status .. ", " .. #res.body .. " bytes")))
+    end)
+end)
 return "selftest dispatched"

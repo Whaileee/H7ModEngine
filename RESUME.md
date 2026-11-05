@@ -396,3 +396,27 @@ User request: a debug console, enabled from the Mods menu, opened with a key set
 - 2026-11-05 10:25, DLL with `type_name` deployed: selftest 26/26 OK (property type_name -> Vector);
   consolesuggest shows real property types (ViewportConsole: Console, Actor: PlayerController,
   ActivePPOverrides: array<PostProcessSettingsOverride>; Viewport/ViewportFrame are `Pointer`, i.e. native pointers).
+
+## Networking + online lobby (branch `feature/networking`, 2026-11-05, uncommitted)
+
+Goal: replace Ubisoft's shut-down online services (design: [docs/ONLINE.md](docs/ONLINE.md); desync plan:
+[docs/DESYNC.md](docs/DESYNC.md)). The user decided: the online mod is **part of the engine** (bundled like
+ModManager); the Cloudflare Worker lobby is a **separate repo**, `N:/Projects/H7Lobby` (README has the API).
+
+Done (builds; **verified offline only**, not yet in game):
+- `src/net/http.*` (WinHTTP, blocking, worker threads), `src/net/upnp.*` (IUPnPNAT + local IP via a connected
+  UDP socket), `src/lua/netlib.cpp`: `h7.http.request/get/post/cancel`, `h7.json.encode/decode/array/null`,
+  `h7.net.local_ip/upnp_add/upnp_remove`. Results are queued and delivered by `PumpNet` each tick inside the mod's
+  scope; `RemoveModNet` drops callbacks on unload. Links winhttp, ws2_32, ole32, oleaut32.
+- `build.bat nettest [online]`: offline test host `tests/offline/nethost.cpp` + `net.lua`. 2026-11-05: 26/26 OK
+  with `online` (HTTPS GET/POST/404/DNS error via postman-echo.com, unload/cancel drop callbacks, **UPnP map +
+  unmap on the user's router worked**, router reported an external IPv4). CI runs the JSON part.
+- Gotcha: vcvars64.bat fails when the calling batch's paths contain `..` segments (separate test .bat was dropped
+  for that reason; the test lives in build.bat). npm 11 blocks install scripts (H7Lobby approves workerd/esbuild).
+
+Next:
+1. In game: `tests/selftest.lua` (new json/local_ip/http checks) + `hooktest.lua`.
+2. The bundled OnlineLobby mod (hooks in docs/ONLINE.md). First in-game checks it depends on: can a pre-hook change
+   `CreateOnlineGame`'s `IsLAN` arg; dump a LAN search result's `PlatformData` (FSessionInfo layout) so the engine
+   can build lobby results (`make_lan_result`, not written yet); direct join `start ip:27015` between two PCs.
+3. Deploy H7Lobby (user: Cloudflare account ready; plan is dashboard "Import a repository" once it is on GitHub).

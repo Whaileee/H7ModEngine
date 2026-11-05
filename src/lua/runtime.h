@@ -10,6 +10,7 @@ namespace h7::lua {
 void OnGameTick(float deltaSeconds, uintptr_t viewport); // driven by the viewport PostRender hook
 void EmitEvent(const char* name, int nargs); // pops nargs values pushed on g_L
 lua_State* State();
+const char* Version();                                   // kVersion, e.g. "0.1.1"
 
 // Ownership tracking so a mod's hooks/handlers/timers are removed when it unloads.
 int CurrentModId();
@@ -29,5 +30,10 @@ void OpenBindings(lua_State* L);            // registers the global `h7` table a
 void RemoveModHooks(int modId);
 void PushObject(lua_State* L, uintptr_t obj);
 int Traceback(lua_State* L);                // message handler for lua_pcall
+
+// --- netlib.cpp: h7.http / h7.json / h7.net ------------------------------------------
+void OpenNet(lua_State* L);                 // adds h7.http, h7.json, h7.net (after OpenBindings)
+void PumpNet(lua_State* L);                 // delivers finished requests to their callbacks (each tick)
+void RemoveModNet(lua_State* L, int modId); // drops a mod's pending callbacks on unload
 
 } // namespace h7::lua

@@ -1,6 +1,6 @@
 # tests/ — in-game tests and drivers
 
-No offline unit tests: everything runs inside the live game. The user must have the game running (launched via
+Everything runs inside the live game, except `offline/`: `build.bat nettest [online]` builds `nethost.exe` (netlib + `src/net` with stubbed runtime) and runs `offline/net.lua` (JSON always; HTTP/UPnP with `online`; CI runs the JSON part). The user must have the game running (launched via
 Ubisoft Connect) and, for UI tests, visible and focused. Script list and what each checks:
 `docs/DEVELOPMENT.md` "Testing in game".
 

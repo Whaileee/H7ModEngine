@@ -26,6 +26,7 @@ static lua_State* g_L = nullptr;
 lua_State* State() { return g_L; }
 
 static const char* kVersion = "0.1.1";
+const char* Version() { return kVersion; }
 
 // ---------------------------------------------------------------------------------------
 // Mods
@@ -648,6 +649,7 @@ static void UnloadMod(Mod& m) {
         lua_settop(L, 0);
     }
     RemoveModHooks(m.id);
+    RemoveModNet(L, m.id);
     for (auto& [name, list] : g_events) {
         for (auto& h : list)
             if (h.mod == m.id) luaL_unref(L, LUA_REGISTRYINDEX, h.ref);
@@ -872,6 +874,7 @@ static void CreateState() {
     lua_setglobal(g_L, "h7");
     lua_register(g_L, "print", H_print);
     OpenBindings(g_L);
+    OpenNet(g_L);
     // Shared Lua libraries for all mods: H7ModEngine\lib\?.lua
     std::string libPath = Narrow(EnginePath(L"lib")) + "\\?.lua";
     lua_getglobal(g_L, "package");
@@ -956,6 +959,7 @@ void OnGameTick(float dt, uintptr_t viewport) {
         DiscoverAndLoadMods();
     }
 
+    PumpNet(g_L);
     RunTimers();
     lua_pushnumber(g_L, dt);
     EmitEvent("tick", 1);

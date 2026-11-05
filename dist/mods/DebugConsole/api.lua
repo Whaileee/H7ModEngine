@@ -63,6 +63,27 @@ return {
     ["h7.hook_post"] = {
         { params = { "func: string | Function", "fn: function(self, args, ret)" }, ret = "id: int", doc = "Adds a hook that runs after func has run." },
     },
+    ["h7.http.cancel"] = {
+        { params = { "id: int" }, ret = "", doc = "Forgets request id:" },
+    },
+    ["h7.http.get"] = {
+        { params = { "url: string", "fn?: function(res: table)", "headers?: table" }, ret = "id: int", doc = "Shorthand for a GET h7.http.request." },
+    },
+    ["h7.http.post"] = {
+        { params = { "url: string", "body: string | table", "fn?: function(res: table)", "headers?: table" }, ret = "id: int", doc = "Shorthand for a POST h7.http.request; a table body is sent as JSON." },
+    },
+    ["h7.http.request"] = {
+        { params = { "options: table", "fn?: function(res: table)" }, ret = "id: int", doc = "Sends an HTTP or HTTPS request." },
+    },
+    ["h7.json.array"] = {
+        { params = { "t?: table" }, ret = "table", doc = "Marks t (or a new empty table) so it encodes as a JSON array even when empty, and returns it." },
+    },
+    ["h7.json.decode"] = {
+        { params = { "text: string" }, ret = "value: any, error?: string", doc = "Parses JSON." },
+    },
+    ["h7.json.encode"] = {
+        { params = { "value: any", "pretty?: bool" }, ret = "string", doc = "Encodes nil, booleans, numbers, strings, h7.json.null and tables." },
+    },
     ["h7.log"] = {
         { params = { "...: any" }, ret = "", doc = "Writes its arguments, converted with tostring and separated by tabs, as one line:" },
     },
@@ -77,6 +98,15 @@ return {
     },
     ["h7.name"] = {
         { params = { "str: string" }, ret = "string", doc = "Adds str to the engine's name table (if it isn't there yet) and returns it." },
+    },
+    ["h7.net.local_ip"] = {
+        { params = {  }, ret = "string?", doc = "This PC's LAN address (the one Windows uses to reach the internet), e.g." },
+    },
+    ["h7.net.upnp_add"] = {
+        { params = { "port: int", "protocol: string", "fn?: function(res: table)", "description?: string" }, ret = "id: int", doc = "Asks the router (UPnP IGD) to forward port (protocol \"UDP\" or \"TCP\") to this PC's same port, replacing an existing mapping of that port." },
+    },
+    ["h7.net.upnp_remove"] = {
+        { params = { "port: int", "protocol: string", "fn?: function(res: table)" }, ret = "id: int", doc = "Removes the router's mapping of port/protocol." },
     },
     ["h7.new_object"] = {
         { params = { "class: string | Class", "options?: table" }, ret = "Object", doc = "Creates a new object of class." },

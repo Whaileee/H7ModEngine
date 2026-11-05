@@ -17,9 +17,9 @@ jobs:
         shell: pwsh
         run: python tools/docs/console_api.py --check
 
-      - name: Build dinput8.dll
+      - name: Build dinput8.dll and run the offline networking test (JSON only; no network calls in CI)
         shell: cmd
-        run: build.bat
+        run: build.bat nettest
 
       - name: Package
         shell: pwsh

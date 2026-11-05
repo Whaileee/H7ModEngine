@@ -10,6 +10,7 @@ update when adding files). See `docs/DEVELOPMENT.md` "Source tour" for what each
 | `engine/` | `DllMain`, init thread (wait for unpack → discover → calibrate → find viewport → tick hook), paths + ini |
 | `ue3/` | Discovery, reflection/layout, hooks, object factory, dumpers — see `ue3/CLAUDE.md` |
 | `lua/` | Lua runtime (mods, events, timers, exec) and the `h7` bindings — see `lua/CLAUDE.md` |
+| `net/` | Blocking network primitives for worker threads: WinHTTP client (`http`), UPnP port mapping + local IP (`upnp`). No Lua or engine access |
 
 ## Rules
 

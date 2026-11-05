@@ -548,6 +548,36 @@ return hero, hero:GetMovementPoints()
 
 `h7.exec("command")` runs a console command through the local player controller and returns its output.
 
+## Networking
+
+Mods can talk to web services (`h7.http`), read and write JSON (`h7.json`) and open ports on the player's router
+(`h7.net`). Network calls never block the game: they run in the background and call your function with the
+result on a later frame. If your mod unloads first, the function is not called.
+
+```lua
+h7.http.get("https://example.com/api/games", function(res)
+    if not res.ok then return h7.warn("request failed: " .. res.error) end
+    if res.status ~= 200 then return h7.warn("HTTP " .. res.status) end
+    local games = h7.json.decode(res.body)
+    h7.log(#games .. " games listed")
+end)
+
+-- A table body is sent as JSON.
+h7.http.post("https://example.com/api/games", { name = "My game", slots = 2 }, function(res) end)
+
+-- Let other players reach this PC on UDP port 27015 (most home routers support this).
+h7.net.upnp_add(27015, "UDP", function(r)
+    h7.log(r.ok and ("public address " .. tostring(r.external_ip)) or ("UPnP failed: " .. r.error))
+end)
+```
+
+`res` has `ok` (false when no response arrived: no connection, DNS error, timeout), `status`, `body`, `headers`
+(lower-case names) and `error`. A 404 or 500 is `ok = true` with that `status`. Decoded JSON `null` is
+`h7.json.null`, and decoded arrays stay arrays when encoded again (even empty ones).
+
+Verified outside the game with `build.bat nettest online` (HTTPS GET/POST, errors, UPnP map/unmap on a real
+router); not yet verified inside the game.
+
 ## Configuration
 
 `<Game>\H7ModEngine\H7ModEngine.ini`:
@@ -600,6 +630,9 @@ The complete reference, with every parameter, return value and error, is in the
 | `h7.mod_settings(name)`, `h7.set_mod_setting(name, key, value)` | A mod's settings with their values; change one (see Settings) |
 | `h7.reload()` | Unload and reload all mods (on the next frame) |
 | `h7.exec(command)` | Run a console command |
+| `h7.http.request{...}`, `h7.http.get`, `h7.http.post`, `h7.http.cancel(id)` | [Networking](#networking): HTTP(S) requests in the background |
+| `h7.json.encode(value [, pretty])`, `h7.json.decode(text)`, `h7.json.array([t])`, `h7.json.null` | JSON |
+| `h7.net.local_ip()`, `h7.net.upnp_add(port, protocol [, fn])`, `h7.net.upnp_remove(port, protocol [, fn])` | This PC's LAN address; router port mapping |
 
 **Per mod**: `mod.name`, `mod.version`, `mod.author`, `mod.dir`, `mod.require(name)`, `mod.save(table)`,
 `mod.load()`, and an optional global `function on_unload()`.
