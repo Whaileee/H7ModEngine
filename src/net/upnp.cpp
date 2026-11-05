@@ -217,6 +217,12 @@ static SoapResult Soap(const Gateway& gw, const std::string& action, const std::
                "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:" + action +
                " xmlns:u=\"" + gw.serviceType + "\">" + args + "</u:" + action + "></s:Body></s:Envelope>";
     HttpResponse res = HttpSend(req, "H7ModEngine");
+    if (!res.ok) {
+        // Home routers' SOAP servers now and then send a garbled reply (WinHTTP 12152, seen 2026-11-05 on the
+        // first request of a session while the next one worked): one retry.
+        Sleep(300);
+        res = HttpSend(req, "H7ModEngine");
+    }
     SoapResult r;
     r.body = res.body;
     if (!res.ok) { r.error = res.error; return r; }

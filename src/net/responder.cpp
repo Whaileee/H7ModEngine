@@ -5,6 +5,7 @@
 // game's token; nothing else is ever sent, and the key never leaves this process.
 #include "responder.h"
 #include "crypto.h"
+#include "upnp.h" // LocalIp
 #include "../core/log.h"
 
 #include <winsock2.h>
@@ -163,17 +164,38 @@ std::string ResponderStart(int port, const std::string& key) {
     StopLocked();
     static bool wsa = [] { WSADATA d; return WSAStartup(MAKEWORD(2, 2), &d) == 0; }();
     if (!wsa) return "Winsock is not available";
-    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET) return "could not create a socket (error " + std::to_string(WSAGetLastError()) + ")";
-    BOOL on = TRUE; // nobody else may bind the port while we hold it
-    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&on, sizeof on);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons((u_short)port);
-    a.sin_addr.s_addr = htonl(g_loopback ? INADDR_LOOPBACK : INADDR_ANY);
-    if (bind(s, (sockaddr*)&a, sizeof a) != 0 || listen(s, 4) != 0) {
-        int e = WSAGetLastError();
-        closesocket(s);
+    // Listens on all addresses; if something else holds the port on one of them (Apple Mobile Device Service,
+    // installed with iTunes/iCloud, listens on 127.0.0.1:27015 — seen 2026-11-05), on the LAN address alone, which
+    // is what the router forwards to.
+    auto open = [port](uint32_t addr, SOCKET& out) -> int {
+        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (s == INVALID_SOCKET) return WSAGetLastError();
+        BOOL on = TRUE; // nobody else may bind the port while we hold it
+        setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&on, sizeof on);
+        sockaddr_in a{};
+        a.sin_family = AF_INET;
+        a.sin_port = htons((u_short)port);
+        a.sin_addr.s_addr = addr;
+        if (bind(s, (sockaddr*)&a, sizeof a) != 0 || listen(s, 4) != 0) {
+            int e = WSAGetLastError();
+            closesocket(s);
+            return e;
+        }
+        out = s;
+        return 0;
+    };
+    SOCKET s = INVALID_SOCKET;
+    std::string where = g_loopback ? " (loopback only)" : "";
+    int e = open(htonl(g_loopback ? INADDR_LOOPBACK : INADDR_ANY), s);
+    if ((e == WSAEADDRINUSE || e == WSAEACCES) && !g_loopback) {
+        std::string lan = LocalIp();
+        in_addr ia{};
+        if (!lan.empty() && inet_pton(AF_INET, lan.c_str(), &ia) == 1 && open(ia.s_addr, s) == 0) {
+            e = 0;
+            where = " on " + lan + " (another program holds it on other addresses)";
+        }
+    }
+    if (e) {
         if (e == WSAEADDRINUSE || e == WSAEACCES) return "TCP port " + std::to_string(port) + " is already in use";
         return "could not listen on TCP port " + std::to_string(port) + " (error " + std::to_string(e) + ")";
     }
@@ -185,7 +207,7 @@ std::string ResponderStart(int port, const std::string& key) {
     g_port = port;
     g_stop = false;
     g_thread = new std::thread(ListenLoop, s);
-    Log("Responder: listening for lobby challenges on TCP %d%s", port, g_loopback ? " (loopback only)" : "");
+    Log("Responder: listening for lobby challenges on TCP %d%s", port, where.c_str());
     return {};
 }
 

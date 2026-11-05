@@ -494,3 +494,17 @@ is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after
   `h7.find_class("IpDrv.TcpNetDriver"):get_default().AllowDownloads` is false in the debug console; leaving ->
   "Responder: stopped", mappings removed; UPnP off + no TCP forward -> the 403 popup; a normal map transition in a
   joined match isn't blocked (no "blocked the host's redirect" line); Windows Firewall may prompt once.
+
+#### In game, one PC (2026-11-05 23:16-23:21, against `wrangler dev` of `feature/verify-hosts` with VERIFY on)
+- **Apple Mobile Device Service (iTunes/iCloud) listens on TCP 127.0.0.1:27015**, so binding 0.0.0.0:27015 failed
+  ("already in use") and the lobby's challenge reached Apple's service ("closed early"): the 403 popup appeared
+  correctly. Fix: `ResponderStart` falls back to binding the LAN address (`LocalIp()`), which is what UPnP and
+  manual forwards point at. Common on players' PCs; keep the fallback.
+- After the fix: "listening ... on 192.168.18.250", challenge answered, listed `verified: true`, heartbeats accepted
+  (address pinning OK), leaving -> "Responder: stopped" and the game deleted from the lobby.
+- The router answered the first SOAP request of the session (TCP GetSpecificPortMappingEntry/AddPortMapping) with
+  a garbled reply (WinHTTP 12152) while the UDP request 7 ms later worked: `Soap()` now retries a transport
+  failure once after 300 ms. Not yet rechecked in game.
+- Testing against a local lobby: `npx wrangler dev --ip 0.0.0.0 --port 8787 --var DEV_ALLOW_PRIVATE:1` and
+  `[Online] LobbyUrl=http://<LAN IP>:8787` (not 127.0.0.1: the challenge would go to whatever holds loopback:27015).
+- Not checked yet: redirect blocking and `AllowDownloads` in a real two-PC match.
