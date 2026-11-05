@@ -21,6 +21,13 @@ int ConfigInt(const wchar_t* section, const wchar_t* key, int fallback) {
     return (int)GetPrivateProfileIntW(section, key, fallback, EnginePath(L"H7ModEngine.ini").c_str());
 }
 
+void ConfigDefault(const wchar_t* section, const wchar_t* key, const wchar_t* value) {
+    std::wstring ini = EnginePath(L"H7ModEngine.ini");
+    wchar_t buf[8];
+    if (GetPrivateProfileStringW(section, key, L"", buf, 8, ini.c_str()) == 1 && buf[0] == 1)
+        WritePrivateProfileStringW(section, key, value, ini.c_str());
+}
+
 std::string Narrow(const std::wstring& w) {
     if (w.empty()) return {};
     int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), nullptr, 0, nullptr, nullptr);

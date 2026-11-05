@@ -10,6 +10,12 @@ check("class default", function() return assert(Actor:get_default(), "no CDO") e
 check("super chain", function() return Actor:get_super() end)
 check("enum", function() return h7.enum("EPhysics").PHYS_Walking end)
 check("properties", function() return #h7.properties("Engine.Actor") .. " props" end)
+check("property type_name", function()
+    for _, p in ipairs(h7.properties("Engine.Actor")) do
+        if p.name == "Location" then assert(p.type_name == "Vector", tostring(p.type_name)) return p.type_name end
+    end
+    error("Location not found")
+end)
 check("functions", function() return #h7.functions("Engine.Actor") .. " functions" end)
 local vp = check("viewport", function() return h7.first("GameViewportClient") end)
 local pc = check("player controller", function() return h7.first("PlayerController") end)
@@ -45,6 +51,26 @@ if cntl then
     end)
 end
 check("mods", function() return #h7.mods() .. " mods" end)
+check("log_lines", function()
+    local _, newest = h7.log_lines()
+    h7.log("selftest marker")
+    local new, after = h7.log_lines(newest)
+    assert(after == newest + 1 and new[1] == "[lua] selftest marker", tostring(new[1]))
+    return after .. " lines"
+end)
+check("config", function()
+    assert(h7.config("NoSuchSection", "NoSuchKey") == nil, "missing key not nil")
+    assert(h7.config("NoSuchSection", "NoSuchKey", "x") == "x", "default ignored")
+    return "Console.Key=" .. tostring(h7.config("Console", "Key"))
+end)
+check("clipboard", function()
+    local old = h7.clipboard()
+    assert(h7.clipboard("selftest zażółć"), "could not set")
+    local got = h7.clipboard()
+    h7.clipboard(old) -- put the player's clipboard back
+    assert(got == "selftest zażółć", got)
+    return "round trip ok"
+end)
 
 -- Multiplexed hook on the function that drives the engine heartbeat.
 local ticks = 0
