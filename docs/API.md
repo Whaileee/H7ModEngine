@@ -551,7 +551,7 @@ return hero, hero:GetMovementPoints()
 ## Networking
 
 Mods can talk to web services (`h7.http`), read and write JSON (`h7.json`) and open ports on the player's router
-(`h7.net`). Network calls never block the game: they run in the background and call your function with the
+(`h7.net`), and hash or generate secrets (`h7.crypto`). Network calls never block the game: they run in the background and call your function with the
 result on a later frame. If your mod unloads first, the function is not called.
 
 ```lua
@@ -640,6 +640,8 @@ The complete reference, with every parameter, return value and error, is in the
 | `h7.json.encode(value [, pretty])`, `h7.json.decode(text)`, `h7.json.array([t])`, `h7.json.null` | JSON |
 | `h7.net.local_ip()`, `h7.net.upnp_add(port, protocol [, fn])`, `h7.net.upnp_remove(port, protocol [, fn])` | This PC's LAN address; router port mapping |
 | `h7.net.set_lan_host(result, ip, port)` | Point a server-browser entry at a host (joinable through the game's own join) |
+| `h7.net.responder_start(port, key)`, `h7.net.responder_stop()` | Answer the online lobby's TCP challenge (host verification) on a background thread |
+| `h7.crypto.sha256(data)`, `h7.crypto.hmac_sha256(key, msg)`, `h7.crypto.random_hex(bytes)` | Hex SHA-256 / HMAC-SHA256; secure random hex (synchronous) |
 | `h7.game_content(fn)` | The community content packs in `CookedPC` (edition, per-pack version hashes, fingerprint) |
 
 **Per mod**: `mod.name`, `mod.version`, `mod.author`, `mod.dir`, `mod.require(name)`, `mod.save(table)`,
@@ -651,7 +653,7 @@ The complete reference, with every parameter, return value and error, is in the
 |---|---|
 | DebugConsole | The in-game Lua console: drawing on the Canvas every frame, typed text from `Console.InputChar`, reading the ini, listing exec functions by reflection |
 | ModManager | The main menu's Mods entry, the mod list and the settings controls: adding Flash clips to a game window and reading mouse input |
-| OnlineLobby | Online multiplayer through the community lobby (enabled by default): changing hook arguments, HTTP + JSON, UPnP, reusing the map selection window as a game browser (with map pictures), joining through the game's own code, asking with the game's own popup |
+| OnlineLobby | Online multiplayer through the community lobby (enabled by default): changing hook arguments, HTTP + JSON, UPnP, the lobby's host verification (`h7.crypto`, `h7.net.responder_*`), writing class defaults, reusing the map selection window as a game browser (with map pictures), joining through the game's own code, asking with the game's own popup |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |

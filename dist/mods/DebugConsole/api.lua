@@ -30,6 +30,15 @@ return {
     ["h7.config"] = {
         { params = { "section: string", "key: string", "default?: any" }, ret = "string | any", doc = "Reads key from [section] of H7ModEngine.ini." },
     },
+    ["h7.crypto.hmac_sha256"] = {
+        { params = { "key: string", "message: string" }, ret = "string", doc = "HMAC-SHA256 of message under key (both any bytes; a hex string is used as its characters, not decoded), as 64 lowercase hex characters." },
+    },
+    ["h7.crypto.random_hex"] = {
+        { params = { "bytes: int" }, ret = "string", doc = "bytes (1..1024) cryptographically secure random bytes as 2 * bytes lowercase hex characters, for secrets and tokens (math.random is not s..." },
+    },
+    ["h7.crypto.sha256"] = {
+        { params = { "data: string" }, ret = "string", doc = "SHA-256 of data (any bytes) as 64 lowercase hex characters." },
+    },
     ["h7.enum"] = {
         { params = { "name: string" }, ret = "{ [string]: int }", doc = "A table mapping each name of the UnrealScript enum name to its numeric value (0, 1, ...)." },
     },
@@ -104,6 +113,12 @@ return {
     },
     ["h7.net.local_ip"] = {
         { params = {  }, ret = "string?", doc = "This PC's LAN address (the one Windows uses to reach the internet), e.g." },
+    },
+    ["h7.net.responder_start"] = {
+        { params = { "port: int", "key: string" }, ret = "ok: bool, error?: string", doc = "Answers the online lobby's TCP challenge on port from a background thread (H7Lobby host verification)." },
+    },
+    ["h7.net.responder_stop"] = {
+        { params = {  }, ret = "", doc = "Stops the challenge responder and frees its port (waits at most ~2 s for a connection being answered)." },
     },
     ["h7.net.set_lan_host"] = {
         { params = { "result: OnlineGameSearchResult", "ip: string", "port: int" }, ret = "bool", doc = "Makes a server-browser entry point at host ip:port the way a LAN search result does, so the game's own join (JoinOnlineGame → GetResolved..." },

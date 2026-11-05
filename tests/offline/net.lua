@@ -1,5 +1,5 @@
--- Offline test for h7.json / h7.http / h7.net: "build.bat nettest" (or "build.bat nettest online").
--- JSON checks always run; HTTP and UPnP checks only with H7_NETTEST_ONLINE=1 ("build.bat nettest online").
+-- Offline test for h7.json / h7.http / h7.net / h7.crypto: "build.bat nettest" (or "build.bat nettest online").
+-- JSON, crypto and challenge responder checks always run; HTTP and UPnP checks only with H7_NETTEST_ONLINE=1 ("build.bat nettest online").
 local failures = 0
 local function check(name, ok, detail)
     print(("[nettest] %-28s %s  %s"):format(name, ok and "OK  " or "FAIL", tostring(detail or "")))
@@ -97,6 +97,90 @@ try("round trip", function()
     assert(back.players[2].name == "Bo" and back.map == "Duel" and #back.empty == 0)
     assert(json.encode(back) == json.encode(src))
     return json.encode(back)
+end)
+
+-- Crypto (Windows CNG)
+local crypto = h7.crypto
+try("sha256", function()
+    assert(crypto.sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    assert(crypto.sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    return "abc and empty"
+end)
+try("hmac_sha256", function()
+    -- RFC 4231 test case 2, and an empty key and message
+    local v = crypto.hmac_sha256("Jefe", "what do ya want for nothing?")
+    assert(v == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", v)
+    assert(crypto.hmac_sha256("", "") == "b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad")
+    return v
+end)
+-- The lobby challenge vectors; H7Lobby's test/verify.test.ts pins the same values (computed once with Node).
+local TOKEN = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+local CKEY = "00f01b980cb2a9a08e109cfe39e64298fb77586162ba8ea27efb66ec34edc3cc"
+local NONCE = "0123456789abcdef0123456789abcdef"
+local REPLY = "5794bf2e5e14ea5f4f7eeca473024143a18e94fa4dd32d5274dd6219a3720350"
+try("challenge key vector", function()
+    local k = crypto.hmac_sha256(TOKEN, "H7LOBBY challenge key")
+    assert(k == CKEY, k)
+    local r = crypto.hmac_sha256(k, NONCE)
+    assert(r == REPLY, r)
+    return r
+end)
+try("random_hex", function()
+    local a, b = crypto.random_hex(32), crypto.random_hex(32)
+    assert(#a == 64 and a:match("^[0-9a-f]+$") and a ~= b, a)
+    assert(#crypto.random_hex(1) == 2)
+    assert(not pcall(crypto.random_hex, 0) and not pcall(crypto.random_hex, 1025))
+    return a
+end)
+
+-- Challenge responder (loopback only in this host). Each test.challenge call is a blocking TCP client.
+local RPORT, BUSY = 27915, 27916
+try("responder answers", function()
+    local ok, err = h7.net.responder_start(RPORT, CKEY)
+    assert(ok == true, err)
+    local reply, cerr = test.challenge(RPORT, "H7LOBBY 1 " .. NONCE .. "\n")
+    assert(reply == REPLY .. "\n", cerr or ("got %q"):format(tostring(reply)))
+    assert(#reply == 65)
+    return "65-byte reply"
+end)
+try("responder rejects junk", function()
+    -- wrong case, wrong version, short line (peer ends), wrong terminator: closed without a byte
+    for _, line in ipairs({ "H7LOBBY 1 " .. NONCE:upper() .. "\n", "H7LOBBY 2 " .. NONCE .. "\n",
+                            "H7LOBBY 1 " .. NONCE:sub(1, 31) .. "\n", "H7LOBBY 1 " .. NONCE .. "\r" }) do
+        local reply = test.challenge(RPORT, line, true)
+        assert(reply == "", ("answered %q"):format(line))
+    end
+    return "4 lines refused"
+end)
+try("responder times out", function()
+    local reply, ms = test.challenge(RPORT, "") -- says nothing: the responder must hang up after 2 s
+    assert(reply == "" and ms >= 1500 and ms < 2900, ("%q after %s ms"):format(tostring(reply), tostring(ms)))
+    return ("closed after %d ms of silence"):format(ms)
+end)
+try("responder key swap", function()
+    local other = crypto.hmac_sha256(crypto.random_hex(32), "H7LOBBY challenge key")
+    assert(h7.net.responder_start(RPORT, other) == true)
+    local reply = test.challenge(RPORT, "H7LOBBY 1 " .. NONCE .. "\n")
+    assert(reply == crypto.hmac_sha256(other, NONCE) .. "\n", reply)
+    return "new key answers"
+end)
+try("responder stops on unload", function()
+    unload_mod(1) -- the test's mod id owns the responder
+    local reply, err = test.challenge(RPORT, "H7LOBBY 1 " .. NONCE .. "\n")
+    assert(reply == nil and err, "still listening")
+    return err
+end)
+try("responder busy port", function()
+    assert(test.occupy(BUSY), "could not occupy the test port")
+    local ok, err = h7.net.responder_start(BUSY, CKEY)
+    assert(ok == false and type(err) == "string", "started on a busy port")
+    h7.net.responder_stop() -- harmless when not running
+    return err
+end)
+try("responder bad args", function()
+    assert(not pcall(h7.net.responder_start, 0, CKEY))
+    assert(not pcall(h7.net.responder_start, RPORT, ""))
+    return "errors raised"
 end)
 
 -- Network

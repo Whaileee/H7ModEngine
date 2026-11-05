@@ -1,6 +1,6 @@
 @echo off
 rem Builds bin\dinput8.dll with MSVC (x64). Usage: build.bat [deploy [examples] | nettest [online]]
-rem   nettest = also build build\nettest\nethost.exe and run tests\offline\net.lua (h7.json/http/net outside the
+rem   nettest = also build build\nettest\nethost.exe and run tests\offline\net.lua (h7.json/http/net/crypto outside the
 rem   game); "online" adds the HTTP and UPnP checks (needs internet; UPnP needs a router with UPnP enabled).
 setlocal
 set ROOT=%~dp0
@@ -49,14 +49,14 @@ for %%f in ("%ROOT%dist\mods\DebugConsole\*.lua") do call :bundle sync "%%~ff" "
 for %%f in ("%ROOT%dist\mods\OnlineLobby\*.lua") do call :bundle sync "%%~ff" "mods\OnlineLobby\%%~nxf"
 rc/nologo /fo "%ROOT%build\obj\bundle.res" "%BUNDLE%\bundle.rc" || exit /b 1
 
-link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj bundle.res user32.lib shell32.lib winhttp.lib ws2_32.lib ole32.lib oleaut32.lib || exit /b 1
+link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj bundle.res user32.lib shell32.lib winhttp.lib ws2_32.lib ole32.lib oleaut32.lib bcrypt.lib || exit /b 1
 echo Built %ROOT%bin\dinput8.dll
 
 set LUAOBJ=
 for %%f in (%LUASRC%) do call set LUAOBJ=%%LUAOBJ%% %%f.obj
 if /i "%1"=="nettest" (
   if not exist "%ROOT%build\nettest" mkdir "%ROOT%build\nettest"
-  cl /nologo /O2 /MT /EHsc /std:c++20 /W3 /D_CRT_SECURE_NO_WARNINGS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I"%LUA%" /Fo"%ROOT%build\nettest\\" /Fe"%ROOT%build\nettest\nethost.exe" "%ROOT%tests\offline\nethost.cpp" "%ROOT%src\lua\netlib.cpp" "%ROOT%src\net\http.cpp" "%ROOT%src\net\upnp.cpp" "%ROOT%src\net\content.cpp" %LUAOBJ% winhttp.lib ws2_32.lib ole32.lib oleaut32.lib shell32.lib || exit /b 1
+  cl /nologo /O2 /MT /EHsc /std:c++20 /W3 /D_CRT_SECURE_NO_WARNINGS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I"%LUA%" /Fo"%ROOT%build\nettest\\" /Fe"%ROOT%build\nettest\nethost.exe" "%ROOT%tests\offline\nethost.cpp" "%ROOT%src\lua\netlib.cpp" "%ROOT%src\net\http.cpp" "%ROOT%src\net\upnp.cpp" "%ROOT%src\net\content.cpp" "%ROOT%src\net\crypto.cpp" "%ROOT%src\net\responder.cpp" %LUAOBJ% winhttp.lib ws2_32.lib ole32.lib oleaut32.lib shell32.lib bcrypt.lib || exit /b 1
   if /i "%2"=="online" set H7_NETTEST_ONLINE=1
   "%ROOT%build\nettest\nethost.exe" "%ROOT%tests\offline\net.lua" || exit /b 1
 )

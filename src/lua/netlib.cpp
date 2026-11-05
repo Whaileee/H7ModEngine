@@ -1,4 +1,4 @@
-// h7.http, h7.json and h7.net: networking for mods.
+// h7.http, h7.json, h7.net and h7.crypto: networking for mods.
 //
 // Blocking work (HTTP, UPnP) runs on a small worker pool. Results are queued and delivered to the mod's callback
 // on the game thread from the tick (PumpNet), inside the mod's scope. Unloading a mod drops its pending
@@ -8,6 +8,8 @@
 #include "../net/http.h"
 #include "../net/upnp.h"
 #include "../net/content.h"
+#include "../net/crypto.h"
+#include "../net/responder.h"
 #include <lua.h>
 #include <lauxlib.h>
 
@@ -125,7 +127,13 @@ void PumpNet(lua_State* L) {
     }
 }
 
+static int g_responderMod = 0; // mod that started the TCP challenge responder (0: not running)
+
 void RemoveModNet(lua_State* L, int modId) {
+    if (g_responderMod && g_responderMod == modId) { // hot reload must never leave the port held
+        net::ResponderStop();
+        g_responderMod = 0;
+    }
     for (auto it = g_pending.begin(); it != g_pending.end();) {
         if (it->second.mod != modId) { ++it; continue; }
         if (it->second.ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, it->second.ref);
@@ -664,6 +672,60 @@ static int Net_local_ip(lua_State* L) {
     return 1;
 }
 
+// h7.net.responder_start(port, key) -> true | false, error. Synchronous; a second call swaps the key.
+static int Net_responder_start(lua_State* L) {
+    int port = CheckPort(L, 1);
+    size_t n;
+    const char* key = luaL_checklstring(L, 2, &n);
+    if (n == 0) return luaL_error(L, "responder_start: key must not be empty");
+    std::string err = net::ResponderStart(port, std::string(key, n));
+    if (!err.empty()) {
+        g_responderMod = 0; // a failed start on another port stopped the old listener
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, err.c_str());
+        return 2;
+    }
+    g_responderMod = CurrentModId();
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+// h7.net.responder_stop()
+static int Net_responder_stop(lua_State*) {
+    net::ResponderStop();
+    g_responderMod = 0;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------------------
+// h7.crypto (synchronous)
+// ---------------------------------------------------------------------------------------
+
+static int PushHex(lua_State* L, const std::string& hex, const char* what) {
+    if (hex.empty()) return luaL_error(L, "crypto.%s failed (Windows CNG error)", what);
+    lua_pushlstring(L, hex.data(), hex.size());
+    return 1;
+}
+
+static int Crypto_sha256(lua_State* L) {
+    size_t n;
+    const char* s = luaL_checklstring(L, 1, &n);
+    return PushHex(L, net::Sha256Hex(std::string(s, n)), "sha256");
+}
+
+static int Crypto_hmac_sha256(lua_State* L) {
+    size_t kn, mn;
+    const char* k = luaL_checklstring(L, 1, &kn);
+    const char* m = luaL_checklstring(L, 2, &mn);
+    return PushHex(L, net::HmacSha256Hex(std::string(k, kn), std::string(m, mn)), "hmac_sha256");
+}
+
+static int Crypto_random_hex(lua_State* L) {
+    lua_Integer n = luaL_checkinteger(L, 1);
+    if (n < 1 || n > 1024) return luaL_error(L, "crypto.random_hex: bytes must be 1..1024 (got %d)", (int)n);
+    return PushHex(L, net::RandomHex((size_t)n), "random_hex");
+}
+
 // h7.game_content(fn): fn({ modded, fingerprint, root, packs = { {name, files, version}, ... }, error }).
 // Scanned once on a worker and cached; later calls get the cached result on the next frame.
 static std::shared_ptr<net::GameContent> g_content;
@@ -735,9 +797,13 @@ void OpenNet(lua_State* L) {
     lua_pop(L, 1);
     const luaL_Reg netf[] = {
         {"upnp_add", Net_upnp_add}, {"upnp_remove", Net_upnp_remove}, {"local_ip", Net_local_ip}, {"set_lan_host", NetSetLanHost},
-        {nullptr, nullptr},
+        {"responder_start", Net_responder_start}, {"responder_stop", Net_responder_stop}, {nullptr, nullptr},
     };
     SetSub(L, "net", netf);
+    const luaL_Reg crypto[] = {
+        {"sha256", Crypto_sha256}, {"hmac_sha256", Crypto_hmac_sha256}, {"random_hex", Crypto_random_hex}, {nullptr, nullptr},
+    };
+    SetSub(L, "crypto", crypto);
     lua_pushcfunction(L, H_game_content);
     lua_setfield(L, -2, "game_content");
     lua_pop(L, 1);
