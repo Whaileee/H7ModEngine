@@ -13,6 +13,10 @@ jobs:
         with:
           submodules: true
 
+      - name: Check the console's API table matches the docs
+        shell: pwsh
+        run: python tools/docs/console_api.py --check
+
       - name: Build dinput8.dll
         shell: cmd
         run: build.bat

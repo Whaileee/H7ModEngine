@@ -582,6 +582,65 @@ static int H_log(lua_State* L) { return LogAt(L, ""); }
 static int H_warn(lua_State* L) { return LogAt(L, "WARNING "); }
 static int H_error(lua_State* L) { return LogAt(L, "ERROR "); }
 
+// h7.log_lines([after]) -> { line, ... }, newest: the engine log lines numbered above `after` (only the last
+// 2000 are kept), without timestamps. Pass `newest` back next time to get only the new ones.
+static int H_log_lines(lua_State* L) {
+    lua_Integer after = luaL_optinteger(L, 1, 0);
+    std::vector<std::string> lines;
+    uint64_t newest = LogHistory(after > 0 ? (uint64_t)after : 0, lines);
+    lua_createtable(L, (int)lines.size(), 0);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        lua_pushlstring(L, lines[i].data(), lines[i].size());
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    lua_pushinteger(L, (lua_Integer)newest);
+    return 2;
+}
+
+// h7.clipboard() -> the Windows clipboard's text ("" if none); h7.clipboard(text) puts text on it.
+static int H_clipboard(lua_State* L) {
+    if (!lua_isnoneornil(L, 1)) {
+        std::wstring w = Widen(luaL_checkstring(L, 1));
+        bool ok = false;
+        if (OpenClipboard(nullptr)) {
+            EmptyClipboard();
+            if (HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (w.size() + 1) * sizeof(wchar_t))) {
+                memcpy(GlobalLock(h), w.c_str(), (w.size() + 1) * sizeof(wchar_t));
+                GlobalUnlock(h);
+                ok = SetClipboardData(CF_UNICODETEXT, h) != nullptr;
+                if (!ok) GlobalFree(h);
+            }
+            CloseClipboard();
+        }
+        lua_pushboolean(L, ok);
+        return 1;
+    }
+    std::string text;
+    if (OpenClipboard(nullptr)) {
+        if (HANDLE h = GetClipboardData(CF_UNICODETEXT)) {
+            if (auto* p = static_cast<const wchar_t*>(GlobalLock(h))) {
+                text = Narrow(p);
+                GlobalUnlock(h);
+            }
+        }
+        CloseClipboard();
+    }
+    lua_pushlstring(L, text.data(), text.size());
+    return 1;
+}
+
+// h7.config(section, key [, default]) -> the value in H7ModEngine.ini as a string (re-read on every call), or
+// `default` (nil if not given) when the key is missing or empty.
+static int H_config(lua_State* L) {
+    std::wstring section = Widen(luaL_checkstring(L, 1)), key = Widen(luaL_checkstring(L, 2));
+    wchar_t buf[2048];
+    GetPrivateProfileStringW(section.c_str(), key.c_str(), L"", buf, 2048, EnginePath(L"H7ModEngine.ini").c_str());
+    std::string v = Narrow(buf);
+    if (v.empty()) lua_settop(L, 3);
+    else lua_pushstring(L, v.c_str());
+    return 1;
+}
+
 static int H_find(lua_State* L) {
     PushObject(L, ue3::FindObject(luaL_checkstring(L, 1)));
     return 1;
@@ -758,6 +817,8 @@ static int H_enum(lua_State* L) {
     return 1;
 }
 
+static std::string TypeName(UObject prop);
+
 static void PushFieldList(lua_State* L, UObject s, bool functions) {
     lua_newtable(L);
     int n = 0;
@@ -765,7 +826,7 @@ static void PushFieldList(lua_State* L, UObject s, bool functions) {
         bool isFn = IsFunction(f);
         if (isFn != functions) continue;
         if (!isFn && ue3::KindOf(f) == PropKind::Unknown) continue;
-        lua_createtable(L, 0, 4);
+        lua_createtable(L, 0, 5);
         lua_pushstring(L, ue3::ObjName(f).c_str());
         lua_setfield(L, -2, "name");
         lua_pushstring(L, ue3::ObjName(ue3::ObjClass(f)).c_str());
@@ -776,6 +837,9 @@ static void PushFieldList(lua_State* L, UObject s, bool functions) {
             PropInfo p = ue3::Describe(f);
             lua_pushinteger(L, p.offset);
             lua_setfield(L, -2, "offset");
+            // UnrealScript-style type, as in h7.signature: "int", "H7Creature", "array<H7BaseCreatureStack>"
+            lua_pushstring(L, TypeName(f).c_str());
+            lua_setfield(L, -2, "type_name");
         } else {
             lua_pushinteger(L, ue3::FuncFlags(f));
             lua_setfield(L, -2, "flags");
@@ -1070,7 +1134,8 @@ void OpenBindings(lua_State* L) {
     lua_pop(L, 1);
 
     const luaL_Reg h7lib[] = {
-        {"log", H_log}, {"warn", H_warn}, {"error", H_error},
+        {"log", H_log}, {"warn", H_warn}, {"error", H_error}, {"log_lines", H_log_lines}, {"config", H_config},
+        {"clipboard", H_clipboard},
         {"find", H_find}, {"find_class", H_find_class}, {"find_all", H_find_all}, {"first", H_first},
         {"enum", H_enum}, {"properties", H_properties}, {"functions", H_functions}, {"to_table", H_to_table},
         {"exec", H_exec}, {"hook", H_hook}, {"hook_post", H_hook_post}, {"unhook", H_unhook},

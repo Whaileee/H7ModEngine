@@ -8,6 +8,11 @@ namespace h7 {
 static FILE* g_file = nullptr;
 static std::mutex g_mutex;
 
+// Ring of the last kHistory lines; line number n lives at g_history[n % kHistory].
+static constexpr uint64_t kHistory = 2000;
+static std::vector<std::string> g_history(kHistory);
+static uint64_t g_lineCount = 0;
+
 void LogInit(const std::wstring& path) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_file) fclose(g_file);
@@ -26,6 +31,7 @@ void LogRaw(const std::string& line) {
     GetLocalTime(&t);
     char stamp[32];
     snprintf(stamp, sizeof(stamp), "[%02d:%02d:%02d.%03d] ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+    g_history[++g_lineCount % kHistory] = line;
     if (g_file) {
         fputs(stamp, g_file);
         fputs(line.c_str(), g_file);
@@ -42,6 +48,13 @@ void Log(const char* fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
     LogRaw(buf);
+}
+
+uint64_t LogHistory(uint64_t after, std::vector<std::string>& out) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    uint64_t first = g_lineCount >= kHistory ? g_lineCount - kHistory + 1 : 1;
+    for (uint64_t n = after + 1 > first ? after + 1 : first; n <= g_lineCount; ++n) out.push_back(g_history[n % kHistory]);
+    return g_lineCount;
 }
 
 std::string HexDump(const void* data, size_t len, uintptr_t displayBase) {

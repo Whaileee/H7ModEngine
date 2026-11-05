@@ -64,7 +64,7 @@ builds and then installs into the game folder:
 |---|---|---|
 | `bin\dinput8.dll` | `<Game>\Binaries\Win64\dinput8.dll` | replaced every time |
 | `dist\H7ModEngine.ini` | `<Game>\H7ModEngine\H7ModEngine.ini` | only if there is none yet: your local settings survive |
-| `dist\mods\ModManager` | `<Game>\H7ModEngine\mods\ModManager` | overwritten: edits you made in the game copy are lost. `build.bat deploy examples` also installs the example mods |
+| `dist\mods\ModManager`, `dist\mods\DebugConsole` | `<Game>\H7ModEngine\mods\...` | overwritten: edits you made in the game copy are lost. `build.bat deploy examples` also installs the example mods |
 | `dist\lib\*` | `<Game>\H7ModEngine\lib\` | shared Lua libraries, if any |
 
 The game folder defaults to `N:\Ubisoft\games\Might and Magic Heroes VII`; set `H7_GAME_DIR` to yours:
@@ -374,9 +374,9 @@ That artifact is for testing `main`; players install releases.
 `.github/workflows/release.yml` runs when a GitHub release is published (or by *Run workflow* for an existing
 tag). It builds the tag and attaches to the release:
 
-- `dinput8.dll`, the whole install: `build.bat` embeds `dist/H7ModEngine.ini` and `dist/mods/ModManager/*.lua` as
+- `dinput8.dll`, the whole install: `build.bat` embeds `dist/H7ModEngine.ini`, `dist/mods/ModManager/*.lua` and `dist/mods/DebugConsole/*.lua` as
   resources, and `src/engine/bundle.cpp` writes them into `<Game>\H7ModEngine\` at startup (the ini only if it
-  is missing; ModManager when missing or when the DLL carries a different version than it last installed, tracked
+  is missing; the two mods when missing or when the DLL carries a different version than it last installed, tracked
   in `data\bundled.txt`, so a newer DLL updates the Mods menu but edits to the game copy survive restarts).
 - `H7ModEngine-examples.zip`, the other mods in `dist/mods/` plus `API.md`, laid out like the game folder.
 

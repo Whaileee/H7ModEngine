@@ -36,6 +36,7 @@ properties and functions mods use through these references, are listed in [Game 
 | [`h7.log(...)`](h7.md#h7log) | Write a line to `engine.log` |
 | [`h7.warn(...)`](h7.md#h7warn) | Write a `WARNING` line |
 | [`h7.error(...)`](h7.md#h7error) | Write an `ERROR` line (does not raise) |
+| [`h7.log_lines([after])`](h7.md#h7log_lines) | Recent log lines (the last 2000), e.g. to show the log in game |
 | **Finding objects** | |
 | [`h7.first(class)`](h7.md#h7first) | First live instance of a class |
 | [`h7.find_all(class [, include_templates])`](h7.md#h7find_all) | All live instances of a class |
@@ -72,6 +73,8 @@ properties and functions mods use through these references, are listed in [Game 
 | [`h7.reload()`](h7.md#h7reload) | Reload every mod |
 | **Console** | |
 | [`h7.exec(command)`](h7.md#h7exec) | Run a console command |
+| [`h7.config(section, key [, default])`](h7.md#h7config) | Read a value from `H7ModEngine.ini` |
+| [`h7.clipboard([text])`](h7.md#h7clipboard) | Read or set the Windows clipboard's text |
 
 ### Object methods
 

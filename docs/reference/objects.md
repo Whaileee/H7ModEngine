@@ -108,7 +108,7 @@ The path without the class: `sce_sephinroth.TheWorld.PersistentLevel.H7Adventure
 #### obj:get_class
 
 ```lua
-obj:get_class() → class
+obj:get_class() → Class
 ```
 
 The object's class, as an object reference (`Class MMH7Game.H7AdventureHero`).
@@ -116,7 +116,7 @@ The object's class, as an object reference (`Class MMH7Game.H7AdventureHero`).
 #### obj:get_outer
 
 ```lua
-obj:get_outer() → object | nil
+obj:get_outer() → Object?
 ```
 
 The object that contains this one (its level, package or owning class), or `nil` for a top-level package.
@@ -124,7 +124,7 @@ The object that contains this one (its level, package or owning class), or `nil`
 #### obj:get_default
 
 ```lua
-class:get_default() → object
+class:get_default() → Object
 ```
 
 On a class: its default object (`Default__ClassName`), which holds the class's default property values. Changing
@@ -133,7 +133,7 @@ a property there changes the default for objects created afterwards.
 #### obj:get_super
 
 ```lua
-obj:get_super() → object | nil
+obj:get_super() → Object?
 ```
 
 On a class, struct or function: its parent (the class it extends, the function it overrides), or `nil`.
@@ -141,7 +141,7 @@ On a class, struct or function: its parent (the class it extends, the function i
 #### obj:get_address
 
 ```lua
-obj:get_address() → integer
+obj:get_address() → int
 ```
 
 The object's memory address. Unique while the object lives, so it makes a good table key for per-object caches.
@@ -150,7 +150,7 @@ Addresses are reused after an object is destroyed: clear such caches on [`map_lo
 #### obj:is_valid
 
 ```lua
-obj:is_valid() → boolean
+obj:is_valid() → bool
 ```
 
 `false` once the game has destroyed the object (for example when its map unloads). This and `tostring` are the only things
@@ -159,7 +159,7 @@ you can use on a destroyed object; everything else raises `engine object 0x... i
 #### obj:is_a
 
 ```lua
-obj:is_a(class) → boolean
+obj:is_a(class: string | Class) → bool
 ```
 
 Whether the object's class is `class` or a subclass of it. `class` is a class name or class object.
@@ -173,7 +173,7 @@ if unit:is_a("H7CreatureStack") then ... end
 #### obj:call
 
 ```lua
-obj:call(name, ...) → results
+obj:call(name: string, ...: any) → any
 ```
 
 Calls the function `name` like `obj:Name(...)`. Use it when a property and a function share a name (the lookup
@@ -251,7 +251,7 @@ Arrays **returned by a function call** are plain Lua tables, not references.
 ### arr:add
 
 ```lua
-arr:add([value]) → integer
+arr:add(value?: any) → int
 ```
 
 Appends `value` (or a zero element when it's omitted) and returns the new length. Memory comes from the engine's
@@ -260,7 +260,7 @@ allocator, so the game can grow, shrink and free the array as usual.
 ### arr:remove
 
 ```lua
-arr:remove(i)
+arr:remove(i: int)
 ```
 
 Removes element `i`, shifting the following elements down.

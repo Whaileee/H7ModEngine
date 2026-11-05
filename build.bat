@@ -33,7 +33,7 @@ set CPPSRC=
 for /r "%ROOT%src" %%f in (*.cpp) do call set CPPSRC=%%CPPSRC%% "%%f"
 cl /nologo /c /O2 /MT /EHsc /std:c++20 /W3 /Zi /D_CRT_SECURE_NO_WARNINGS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I"%LUA%" %CPPSRC% || exit /b 1
 
-rem Embed the default ini and ModManager in the DLL (installed at startup by src\engine\bundle.cpp), so a release
+rem Embed the default ini, ModManager and DebugConsole in the DLL (installed at startup by src\engine\bundle.cpp), so a release
 rem is just dinput8.dll. Manifest lines: "<resource id> <keep = write if missing | sync = keep identical> <path>".
 set BUNDLE=%ROOT%build\bundle
 if not exist "%BUNDLE%" mkdir "%BUNDLE%"
@@ -43,6 +43,7 @@ set RCPATH=%BUNDLE%\manifest.txt
 > "%BUNDLE%\bundle.rc" echo 1000 RCDATA "%RCPATH:\=/%"
 call :bundle keep "%ROOT%dist\H7ModEngine.ini" "H7ModEngine.ini"
 for %%f in ("%ROOT%dist\mods\ModManager\*.lua") do call :bundle sync "%%~ff" "mods\ModManager\%%~nxf"
+for %%f in ("%ROOT%dist\mods\DebugConsole\*.lua") do call :bundle sync "%%~ff" "mods\DebugConsole\%%~nxf"
 rc /nologo /fo "%ROOT%build\obj\bundle.res" "%BUNDLE%\bundle.rc" || exit /b 1
 
 link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj bundle.res user32.lib shell32.lib || exit /b 1
@@ -54,11 +55,12 @@ if /i "%1"=="deploy" (
   copy /y "%ROOT%bin\dinput8.dll" "%GAME%\Binaries\Win64\dinput8.dll" >nul || exit /b 1
   if not exist "%GAME%\H7ModEngine" mkdir "%GAME%\H7ModEngine"
   if not exist "%GAME%\H7ModEngine\H7ModEngine.ini" copy /y "%ROOT%dist\H7ModEngine.ini" "%GAME%\H7ModEngine\H7ModEngine.ini" >nul
-  rem Only ModManager is installed; "build.bat deploy examples" also installs the example mods.
+  rem Only ModManager and DebugConsole are installed; "build.bat deploy examples" also installs the example mods.
   if /i "%2"=="examples" (
     xcopy /e /i /y /q "%ROOT%dist\mods" "%GAME%\H7ModEngine\mods" >nul
   ) else (
     xcopy /e /i /y /q "%ROOT%dist\mods\ModManager" "%GAME%\H7ModEngine\mods\ModManager" >nul
+    xcopy /e /i /y /q "%ROOT%dist\mods\DebugConsole" "%GAME%\H7ModEngine\mods\DebugConsole" >nul
   )
   xcopy /e /i /y /q "%ROOT%dist\lib" "%GAME%\H7ModEngine\lib" >nul
   rem CLAUDE.md files are repository notes, not mod files.

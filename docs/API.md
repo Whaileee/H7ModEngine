@@ -495,6 +495,47 @@ hook, handler or timer they create belongs to that mod too (and is removed when 
 Errors inside hooks, event handlers and timers are caught and logged as `ERROR in hook ... (MyMod)` with a stack
 trace; the game keeps running and the hook stays active.
 
+**The debug console** (the DebugConsole mod, shipped with the engine and off by default): turn it on in the
+Mods menu (category Developer), then press the key from `H7ModEngine.ini` (`[Console] Key=`, default `Tilde`,
+the key left of 1) in any screen. It shows the engine log live and runs what you type:
+
+| Input | |
+|---|---|
+| `h7.first("H7AdventureHero"):GetName()` | A Lua expression: its value is printed (tables expanded two levels; `dump(v, depth)` for more) |
+| `x = h7.first("H7Calendar")` | A statement; variables you set stay for the session |
+| `/stat fps` | A game console command (`h7.exec`); `commands("cheat")` lists the commands the current screen accepts |
+| Several lines | A one-time script: Enter on an unfinished chunk (`for i = 1, 3 do`) starts a new, indented line and runs the whole script once it is complete; Shift+Enter always adds a line, Ctrl+Enter always runs. If the last line is an expression its value is printed. Ctrl+V pastes a script from the clipboard |
+
+**Suggestions** appear under the input as you type: after `/`, the game's console commands (the exec functions of
+the viewport, its console and interactions, the player controller, its cheat manager, HUD, pawn and input, and the
+game info, read live; plus the engine commands from the game's console command list) with their parameters,
+which stay shown while you type the arguments; in Lua, globals and keywords, table fields, and an object's
+properties (after `.`) or functions with their signatures (after `:`). Up/Down choose, Tab accepts, Esc hides.
+Each row shows the name, its kind (function, method, property, table, value, keyword, command), its signature or
+type and the class that declares it. Signatures use one notation: `(class: string | Class, include_templates?:
+bool) -> Object[]`; `?` marks an optional parameter (from Lua a skipped one is passed as zero, not its UnrealScript
+default), and a game function's `out` parameters are listed after `->` too, since Lua gets them as extra return
+values. While you type a call's arguments (`h7.first(`, `hero:GetPlayerOwner(`, `/Summon `), the popup shows the
+signature with the current argument underlined, and a one-line description for `h7` functions.
+Suggestions also work after calls that only look things up (`h7.first("H7AdventureHero"):Get`): `h7.first`,
+`h7.find`, `h7.find_class`, `h7.find_all`, `h7.enum` and methods named `Get...`/`Is...` are run while you type
+(other calls never are). The game's command list includes engine commands this build doesn't have (e.g.
+`Stat GAME`; `Stat FPS` works). These are never suggested: the mod ships the list of missing ones for v2.2.1,
+tests the list's `Stat`/`Show` entries once per install when it loads (each runs twice in one frame, on and off
+again, so nothing changes), and learns any other command the game answers with "Command not recognized".
+
+| Keys | |
+|---|---|
+| Up/Down | Suggestion, line of a script, or history (saved across sessions) |
+| Tab | Accept the suggestion; indent on an empty line |
+| PgUp/PgDn, mouse wheel | Scroll the output |
+| Ctrl+V / Ctrl+C / Ctrl+U / Ctrl+L | Paste / copy the input / clear the input / clear the output |
+| Esc | Hide the suggestions, then close the console |
+
+While it is open the game doesn't get the keyboard (the mouse still works). Hooks and timers created from the
+console belong to DebugConsole and are removed when it is turned off or reloaded. Its settings (Mods menu): how
+much of the screen it covers and the text size.
+
 **The exec folder** runs Lua in the running game. Copy a `.lua` file into `<Game>\H7ModEngine\exec\`. Within
 about a second it runs, its output and return values go to the log (`exec: => ...`), and the file is renamed to
 `.done`. Exec scripts share the global environment, not a mod's.
@@ -521,6 +562,11 @@ Disabled=HelloWorld
 [Mod.DamageScale]
 multiplier=1.5
 
+[Console]
+; Key that opens the debug console (DebugConsole mod): an Unreal key name such as Tilde, F12, Insert
+; (added with the default Tilde when missing; read while the game runs)
+Key=Tilde
+
 [Dev]
 ; Write names.txt / objects.txt to dumps\ at startup (default 1)
 DumpSDK=1
@@ -540,7 +586,9 @@ The complete reference, with every parameter, return value and error, is in the
 | | |
 |---|---|
 | `h7.version` | Engine version string |
-| `h7.log/warn/error(...)` | [Logging](#logging-and-debugging) |
+| `h7.log/warn/error(...)`, `h7.log_lines([after])` | [Logging](#logging-and-debugging); recent log lines (the debug console shows them) |
+| `h7.config(section, key [, default])` | A value from `H7ModEngine.ini` ([Configuration](#configuration)) |
+| `h7.clipboard([text])` | Read the Windows clipboard's text, or put text on it |
 | `h7.first`, `h7.find_all`, `h7.find`, `h7.find_class`, `h7.enum`, `h7.properties`, `h7.functions`, `h7.signature` | [Looking things up](#looking-things-up) |
 | `h7.to_table(value)` | Plain Lua copy of a struct, array or object |
 | `h7.clone`, `h7.new_object`, `h7.package`, `h7.name`, `h7.can_create`, `h7.flags` | [Creating objects](#creating-objects) |
@@ -560,6 +608,7 @@ The complete reference, with every parameter, return value and error, is in the
 
 | Mod | Shows |
 |---|---|
+| DebugConsole | The in-game Lua console: drawing on the Canvas every frame, typed text from `Console.InputChar`, reading the ini, listing exec functions by reflection |
 | ModManager | The main menu's Mods entry, the mod list and the settings controls: adding Flash clips to a game window and reading mouse input |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |

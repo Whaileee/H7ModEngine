@@ -1,7 +1,7 @@
 name: Release
 
 # Attaches the player downloads to a GitHub release:
-#   - dinput8.dll                 the whole engine: it carries the default ini and the Mods menu (ModManager) and
+#   - dinput8.dll                 the whole engine: it carries the default ini, the Mods menu (ModManager) and DebugConsole, and
 #                                 installs them into <Game>\H7ModEngine\ on first start. Players drop it into
 #                                 <Game>\Binaries\Win64\ and play.
 #   - H7ModEngine-examples.zip    optional example mods, unzipped into the game folder.
@@ -54,8 +54,8 @@ jobs:
         run: |
           $root = 'examples/H7ModEngine/mods'
           New-Item -ItemType Directory -Force $root | Out-Null
-          # ModManager is inside dinput8.dll; CLAUDE.md files are repository notes.
-          Get-ChildItem dist/mods -Directory | Where-Object Name -ne 'ModManager' |
+          # ModManager and DebugConsole are inside dinput8.dll; CLAUDE.md files are repository notes.
+          Get-ChildItem dist/mods -Directory | Where-Object Name -notin 'ModManager', 'DebugConsole' |
             ForEach-Object { Copy-Item -Recurse $_.FullName $root }
           Copy-Item docs/API.md examples/H7ModEngine/
           Get-ChildItem examples -Recurse -Filter CLAUDE.md | Remove-Item
