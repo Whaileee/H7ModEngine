@@ -50,8 +50,10 @@ end)
 -- ---------------------------------------------------------------------------------------------------------------
 
 -- Lua mods that change gameplay: loaded, not hidden, not tools.
+-- Lists are marked as JSON arrays: an empty Lua table would otherwise be sent as {} and the lobby refuses
+-- non-arrays (a host without gameplay mods couldn't list a game, 2026-11-05).
 local function gameplay_mods()
-    local list = {}
+    local list = json.array()
     for _, m in ipairs(h7.mods()) do
         if m.loaded and not m.hidden and m.category ~= "Developer" and m.name ~= "OnlineLobby" then
             list[#list + 1] = { name = m.name, version = tostring(m.version or "") }
@@ -62,7 +64,7 @@ local function gameplay_mods()
 end
 
 local function content_packs()
-    local list = {}
+    local list = json.array()
     for _, p in ipairs(state.content and state.content.packs or {}) do
         list[#list + 1] = { name = p.name, version = p.version, files = p.files }
     end
