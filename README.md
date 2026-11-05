@@ -80,6 +80,7 @@ The engine ships with these example mods:
 | HeroMovement | The human player's heroes get more movement points per day | off |
 | ModManager | The Mods entry in the main menu (hidden from its own list) | on |
 | DebugConsole | In-game Lua console and live log for mod makers; key in `H7ModEngine.ini`, `[Console] Key=` (default Tilde) | off |
+| OnlineLobby | Online multiplayer without Ubisoft's (shut down) services: Online > Create lists your game in the community lobby ([H7Lobby](https://github.com/Whaileee/H7Lobby)), Online > Join browses it. The host needs UDP and TCP 27015 reaching their PC (opened through UPnP when the router allows it). Design: [docs/ONLINE.md](docs/ONLINE.md) | on |
 
 ## Writing mods
 
@@ -110,7 +111,7 @@ git clone --recursive https://github.com/Whaileee/H7ModEngine.git
 build.bat
 ```
 
-`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini, ModManager and DebugConsole into the game
+`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini, ModManager, DebugConsole and OnlineLobby into the game
 folder; `build.bat deploy examples` adds the example mods. Set `H7_GAME_DIR` to point it at your installation. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
 for the architecture, the development loop, in-game testing and the reverse-engineering notes.
 
@@ -141,8 +142,10 @@ The details are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#architecture).
 
 ## Status
 
-Version 0.1.1. The engine, hooks, the debug console and all example mods are verified in game on v2.2.1. The API
-may still change.
+Version 0.2.0. The engine, hooks, the debug console and all example mods are verified in game on v2.2.1. 0.2.0 adds
+networking for mods (`h7.http`, `h7.json`, `h7.net`, `h7.crypto`) and the OnlineLobby mod: hosting, the lobby
+browser and host verification are verified in game on one PC; a full match between two PCs over the internet is
+not yet. The API may still change.
 
 ## Disclaimer
 

@@ -25,7 +25,7 @@ namespace h7::lua {
 static lua_State* g_L = nullptr;
 lua_State* State() { return g_L; }
 
-static const char* kVersion = "0.1.1";
+static const char* kVersion = "0.2.0";
 const char* Version() { return kVersion; }
 
 // ---------------------------------------------------------------------------------------

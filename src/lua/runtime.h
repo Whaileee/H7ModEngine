@@ -10,7 +10,7 @@ namespace h7::lua {
 void OnGameTick(float deltaSeconds, uintptr_t viewport); // driven by the viewport PostRender hook
 void EmitEvent(const char* name, int nargs); // pops nargs values pushed on g_L
 lua_State* State();
-const char* Version();                                   // kVersion, e.g. "0.1.1"
+const char* Version();                                   // kVersion, e.g. "0.2.0"
 
 // Ownership tracking so a mod's hooks/handlers/timers are removed when it unloads.
 int CurrentModId();
