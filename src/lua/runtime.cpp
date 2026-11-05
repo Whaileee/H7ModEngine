@@ -875,6 +875,7 @@ static void CreateState() {
     lua_register(g_L, "print", H_print);
     OpenBindings(g_L);
     OpenNet(g_L);
+    OpenDev(g_L);
     // Shared Lua libraries for all mods: H7ModEngine\lib\?.lua
     std::string libPath = Narrow(EnginePath(L"lib")) + "\\?.lua";
     lua_getglobal(g_L, "package");

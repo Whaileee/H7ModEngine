@@ -29,6 +29,7 @@ int SetCurrentModId(int id) { int old = g_mod; g_mod = id; return old; }
 const std::string& ModName(int) { return g_name; }
 const char* Version() { return "test"; }
 void Report(const std::string& where, const std::string& error) { printf("ERROR in %s: %s\n", where.c_str(), error.c_str()); }
+int NetSetLanHost(lua_State* L) { return luaL_error(L, "set_lan_host needs the game"); }
 int Traceback(lua_State* L) {
     luaL_traceback(L, L, lua_tostring(L, 1), 1);
     return 1;

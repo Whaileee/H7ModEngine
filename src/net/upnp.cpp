@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <natupnp.h>
 #include <cstdio>
+#include <mutex>
 
 namespace h7::net {
 
@@ -71,9 +72,12 @@ template <class Fn> static UpnpResult WithMappings(Fn fn) {
         if (FAILED(hr)) {
             res.error = HrText("UPnPNAT", hr);
         } else {
-            // The collection is null until the router has answered the discovery; retry for a few seconds.
+            // The collection is null until the router has answered the discovery; retry for a while. Requests are
+            // serialised: routers answer SSDP discovery slowly and some ignore overlapping ones.
+            static std::mutex one;
+            std::lock_guard lock(one);
             Com<IStaticPortMappingCollection> maps;
-            for (int i = 0; i < 6 && !maps.p; ++i) {
+            for (int i = 0; i < 12 && !maps.p; ++i) {
                 hr = nat->get_StaticPortMappingCollection(&maps);
                 if (!maps.p) Sleep(1000);
             }

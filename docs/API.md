@@ -639,6 +639,8 @@ The complete reference, with every parameter, return value and error, is in the
 | `h7.http.request{...}`, `h7.http.get`, `h7.http.post`, `h7.http.cancel(id)` | [Networking](#networking): HTTP(S) requests in the background |
 | `h7.json.encode(value [, pretty])`, `h7.json.decode(text)`, `h7.json.array([t])`, `h7.json.null` | JSON |
 | `h7.net.local_ip()`, `h7.net.upnp_add(port, protocol [, fn])`, `h7.net.upnp_remove(port, protocol [, fn])` | This PC's LAN address; router port mapping |
+| `h7.net.set_lan_host(result, ip, port)` | Point a server-browser entry at a host (joinable through the game's own join) |
+| `h7.game_content(fn)` | The community content packs in `CookedPC` (edition, per-pack version hashes, fingerprint) |
 
 **Per mod**: `mod.name`, `mod.version`, `mod.author`, `mod.dir`, `mod.require(name)`, `mod.save(table)`,
 `mod.load()`, and an optional global `function on_unload()`.
@@ -649,6 +651,7 @@ The complete reference, with every parameter, return value and error, is in the
 |---|---|
 | DebugConsole | The in-game Lua console: drawing on the Canvas every frame, typed text from `Console.InputChar`, reading the ini, listing exec functions by reflection |
 | ModManager | The main menu's Mods entry, the mod list and the settings controls: adding Flash clips to a game window and reading mouse input |
+| OnlineLobby | Online multiplayer through the community lobby (enabled by default): changing hook arguments, HTTP + JSON, UPnP, adding entries to the game's server browser, asking with the game's own popup |
 | HelloWorld | Events, timers, saved data, `on_unload` |
 | DailyGold | Post-hook on a game function; finding objects; calling functions |
 | CombatXP | Replacing a return value |

@@ -7,6 +7,7 @@
 #include "../core/log.h"
 #include "../net/http.h"
 #include "../net/upnp.h"
+#include "../net/content.h"
 #include <lua.h>
 #include <lauxlib.h>
 
@@ -662,6 +663,50 @@ static int Net_local_ip(lua_State* L) {
     return 1;
 }
 
+// h7.game_content(fn): fn({ modded, fingerprint, root, packs = { {name, files, version}, ... }, error }).
+// Scanned once on a worker and cached; later calls get the cached result on the next frame.
+static std::shared_ptr<net::GameContent> g_content;
+static std::mutex g_contentMx;
+
+static void PushContent(lua_State* L, const net::GameContent& c) {
+    lua_newtable(L);
+    lua_pushboolean(L, !c.packs.empty()); lua_setfield(L, -2, "modded");
+    lua_pushstring(L, c.fingerprint.c_str()); lua_setfield(L, -2, "fingerprint");
+    lua_pushstring(L, c.root.c_str()); lua_setfield(L, -2, "root");
+    if (!c.error.empty()) { lua_pushstring(L, c.error.c_str()); lua_setfield(L, -2, "error"); }
+    lua_createtable(L, (int)c.packs.size(), 0);
+    int i = 1;
+    for (auto& p : c.packs) {
+        lua_createtable(L, 0, 3);
+        lua_pushstring(L, p.name.c_str()); lua_setfield(L, -2, "name");
+        lua_pushinteger(L, p.files); lua_setfield(L, -2, "files");
+        lua_pushstring(L, p.version.c_str()); lua_setfield(L, -2, "version");
+        lua_rawseti(L, -2, i++);
+    }
+    lua_setfield(L, -2, "packs");
+}
+
+static int H_game_content(lua_State* L) {
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    int id = Submit(L, 1, []() -> Pusher {
+        std::shared_ptr<net::GameContent> c;
+        {
+            std::lock_guard lock(g_contentMx);
+            if (!g_content) {
+                g_content = std::make_shared<net::GameContent>(net::ScanGameContent());
+                size_t files = 0;
+                for (auto& p : g_content->packs) files += p.files;
+                Log("Game content: %zu pack(s), %zu package(s) in %s%s", g_content->packs.size(), files,
+                    g_content->root.c_str(), g_content->packs.empty() ? " (unmodded)" : "");
+            }
+            c = g_content;
+        }
+        return [c](lua_State* L) { PushContent(L, *c); };
+    });
+    lua_pushinteger(L, id);
+    return 1;
+}
+
 // ---------------------------------------------------------------------------------------
 
 static void SetSub(lua_State* L, const char* name, const luaL_Reg* fns) {
@@ -688,9 +733,12 @@ void OpenNet(lua_State* L) {
     lua_setfield(L, -2, "null");
     lua_pop(L, 1);
     const luaL_Reg netf[] = {
-        {"upnp_add", Net_upnp_add}, {"upnp_remove", Net_upnp_remove}, {"local_ip", Net_local_ip}, {nullptr, nullptr},
+        {"upnp_add", Net_upnp_add}, {"upnp_remove", Net_upnp_remove}, {"local_ip", Net_local_ip}, {"set_lan_host", NetSetLanHost},
+        {nullptr, nullptr},
     };
     SetSub(L, "net", netf);
+    lua_pushcfunction(L, H_game_content);
+    lua_setfield(L, -2, "game_content");
     lua_pop(L, 1);
 }
 

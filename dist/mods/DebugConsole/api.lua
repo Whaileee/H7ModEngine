@@ -57,6 +57,9 @@ return {
     ["h7.functions"] = {
         { params = { "x: string | Object | Struct" }, ret = "{ name, type, owner, flags }[]", doc = "Every function of a class (or struct), inherited ones included." },
     },
+    ["h7.game_content"] = {
+        { params = { "fn: function(content: table)" }, ret = "id: int", doc = "Describes the community content the game loads from the player's Documents\\My Games\\Might & Magic Heroes VII\\MMH7Game\\CookedPC folder (*...." },
+    },
     ["h7.hook"] = {
         { params = { "func: string | Function", "fn: function(self, args)", "when?: \"pre\" | \"post\"" }, ret = "id: int", doc = "Adds a hook on func and returns its id (an integer, for h7.unhook)." },
     },
@@ -101,6 +104,9 @@ return {
     },
     ["h7.net.local_ip"] = {
         { params = {  }, ret = "string?", doc = "This PC's LAN address (the one Windows uses to reach the internet), e.g." },
+    },
+    ["h7.net.set_lan_host"] = {
+        { params = { "result: OnlineGameSearchResult", "ip: string", "port: int" }, ret = "bool", doc = "Makes a server-browser entry point at host ip:port the way a LAN search result does, so the game's own join (JoinOnlineGame → GetResolved..." },
     },
     ["h7.net.upnp_add"] = {
         { params = { "port: int", "protocol: string", "fn?: function(res: table)", "description?: string" }, ret = "id: int", doc = "Asks the router (UPnP IGD) to forward port (protocol \"UDP\" or \"TCP\") to this PC's same port, replacing an existing mapping of that port." },

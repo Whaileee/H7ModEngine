@@ -20,7 +20,8 @@ Ubisoft Connect) and, for UI tests, visible and focused. Script list and what ea
 - Drive steps with `h7.after`, log the state you check with one prefix (`[selftest] name  OK  value`), emit
   `SHOT <name>` / `DONE` lines for `run_ingame.sh`. Assert on logged state; screenshots of a covered window show
   a stale frame.
-- `*lab.lua` files are experiments kept for reference, not regression tests.
+- `*lab.lua` files are experiments kept for reference, not regression tests. `onlinelab.lua` dumps the LAN session
+  record and hosts a LAN duel (it found the record layout behind `h7.net.set_lan_host`).
 
 ## Input drivers (PowerShell)
 

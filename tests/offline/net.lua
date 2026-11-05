@@ -109,17 +109,38 @@ try("bad url rejected", function()
     return err
 end)
 
-if not online then
-    print("[nettest] (online checks skipped; run with 'online' to include HTTP and UPnP)")
-    done(failures)
-    return
-end
-
--- Online checks run one after another (each starts the next from its callback).
+-- Checks run one after another (each starts the next from its callback).
 local steps = {}
 local function nextStep()
     local step = table.remove(steps, 1)
     if step then step() else done(failures) end
+end
+
+-- Game content scan (local disk; on CI the folder doesn't exist, which must read as "unmodded").
+steps[#steps + 1] = function()
+    h7.game_content(function(c)
+        local okShape = type(c.packs) == "table" and type(c.modded) == "boolean" and c.modded == (#c.packs > 0)
+            and (c.modded == (c.fingerprint ~= ""))
+        for _, p in ipairs(c.packs) do
+            okShape = okShape and type(p.name) == "string" and p.files > 0 and #p.version == 8
+        end
+        check("game_content", okShape, ("%s, %d pack(s), fingerprint %s"):format(c.modded and "modded" or "unmodded",
+            #c.packs, c.fingerprint ~= "" and c.fingerprint or "-"))
+        for i = 1, math.min(#c.packs, 6) do
+            print(("[nettest]   %s (%d files) %s"):format(c.packs[i].name, c.packs[i].files, c.packs[i].version))
+        end
+        -- A second call returns the cached scan.
+        h7.game_content(function(c2)
+            check("game_content cached", c2.fingerprint == c.fingerprint and #c2.packs == #c.packs)
+            nextStep()
+        end)
+    end)
+end
+
+if not online then
+    print("[nettest] (online checks skipped; run with 'online' to include HTTP and UPnP)")
+    nextStep()
+    return
 end
 
 steps[#steps + 1] = function()

@@ -33,7 +33,11 @@ int Traceback(lua_State* L);                // message handler for lua_pcall
 
 // --- netlib.cpp: h7.http / h7.json / h7.net ------------------------------------------
 void OpenNet(lua_State* L);                 // adds h7.http, h7.json, h7.net (after OpenBindings)
+int NetSetLanHost(lua_State* L);            // h7.net.set_lan_host, in bindings.cpp (needs struct proxies)
 void PumpNet(lua_State* L);                 // delivers finished requests to their callbacks (each tick)
 void RemoveModNet(lua_State* L, int modId); // drops a mod's pending callbacks on unload
+
+// --- devlib.cpp: h7.dev (raw memory access for engine development) ---------------------
+void OpenDev(lua_State* L);
 
 } // namespace h7::lua
