@@ -351,3 +351,48 @@ running `tests\settingstest.lua` / `modwindow_autotest.lua`).
 - Mods: `mods\<Name>\mod.lua` (manifest: name, version, author, description, load_after, enabled) + `main.lua`;
   per-mod env with `mod.name/dir/require/save/load`, optional `on_unload()`; hot reload on file change; `h7.reload()`,
   `h7.mods()`; `[Mods] Disabled=` in ini; `h7.exec("console cmd")`
+
+## Debug console (2026-11-05, branch `feature/debug-console`, uncommitted)
+
+User request: a debug console, enabled from the Mods menu, opened with a key set in H7ModEngine.ini; then
+"intellisense" for game commands and one-time multi-line Lua scripts.
+- Engine: `h7.log_lines([after])` (ring of the last 2000 log lines in `core/log.cpp`), `h7.config(section, key
+  [, default])`, `h7.clipboard([text])`; `ConfigDefault` adds `[Console] Key=Tilde` to existing inis at startup.
+- Mod `dist/mods/DebugConsole` (bundled in the DLL like ModManager, `enabled = false`, category Developer):
+  `main.lua` draws on the Canvas in a PostRender post-hook, reads keys from `Console.InputKey` and text from
+  `Console.InputChar` (both report handled while open), runs Lua in its own env (`return <expr>` first; in a script
+  the last line's value), `/cmd` via h7.exec, multi-line input (Enter on `<eof>`-incomplete chunks adds an indented
+  line). `suggest.lua`: popup for game commands (exec functions, FUNC_Exec 0x200, of the viewport/console/
+  interactions, local PC, CheatManager, HUD, Pawn, PlayerInput, Game, plus `Console.ManualAutoCompleteList` from
+  the game ini) and Lua names/members (own class ranked first, signatures via h7.signature for visible rows only).
+- Lua logic is tested offline with a stubbed `h7` (a lua.exe built from `third_party/lua/onelua.c`).
+- Verified in game 2026-11-05 (user run, v1): enabled from the Mods menu, Tilde opens it, typing through
+  InputChar, expressions/variables/`/command` work, drawn visibly. v2 Lua (suggestions, scripts) hot-reloaded into
+  the running game: `tests/consolesuggest.lua` -> 311 commands at the main menu in 26 ms (83 CheatManager, 50
+  H7PlayerController, ...), `/stat ` continues into multi-word entries, member signatures OK.
+- 2026-11-05 09:56, new DLL deployed: selftest 25/25 OK at the main menu (incl. log_lines, config, clipboard
+  round trip with Polish letters), hooktest all OK, hook fired 214x in 2 s; bundled files 0 of 7 written (game
+  copies already current). Not yet seen on screen: the suggestion popup and multi-line input (logic tested
+  offline and via `tests/consolesuggest.lua` in game).
+- 2026-11-05 ~10:00, user screenshot: console draws over the GFx main menu; command popup used. Fixes (hot-loaded,
+  verified with `tests/consolesuggest.lua`): members after read-only calls (`h7.first(...)`, `:Get*`/`:Is*`,
+  1 s cache) -> `h7.first("H7CouncilPlayerController"):Get` lists its getters with signatures; commands the game
+  rejects ("Command not recognized") are remembered per full command in DebugConsole's saved data and hidden
+  (shipping build: `Stat FPS`/`Stat UNIT` work, `Stat GAME`/`MEMORY`/`PHYSICS` don't); exec output trimmed.
+- Unrecognized commands hidden up front: `Console.ManualAutoCompleteList` has 92 entries (dump:
+  `dumps\manual_commands.txt`). `tests/probecommands.lua` runs the 33 Stat/Show ones twice (toggle on/off): all 13
+  Show and Stat FPS/UNIT/LEVELS/SOUNDWAVES/SOUNDCUES/SOUNDS work; 14 Stat entries are "Command not recognized" ->
+  shipped in `DebugConsole/known.lua`. The mod also probes new Stat/Show entries once per install at load or
+  map_loaded (`saved.probed`); in game it found the same 14. Other entries (Exit, Open, RestartLevel, sound
+  changes, Set, memleak, movie capture...) are never run automatically; failures are learned when typed.
+- Typed suggestions (user chose: TypeScript-like notation, parameter hints, types kept in the docs). Signature
+  lines in `docs/reference/{h7,mod,objects}.md` are now typed; `tools/docs/console_api.py` generates
+  `DebugConsole/api.lua` (51 entries; `--check` runs in build.yml). Rows: name | kind | signature/type | owner;
+  game signatures converted from h7.signature (`optional` -> `?`, out params also listed after `->`); hints for
+  h7/mod/print (also through aliases, by function value), object methods and exec commands, current argument
+  underlined. Engine: `h7.properties` entries gain `type_name` (UnrealScript type, e.g. Vector) - built, not yet
+  deployed (game running); until then property rows show Struct/Object/Array. Verified in game with
+  `tests/consolesuggest.lua` (Lua hot-load, 2026-11-05 10:22); popup look not yet seen on screen.
+- 2026-11-05 10:25, DLL with `type_name` deployed: selftest 26/26 OK (property type_name -> Vector);
+  consolesuggest shows real property types (ViewportConsole: Console, Actor: PlayerController,
+  ActivePPOverrides: array<PostProcessSettingsOverride>; Viewport/ViewportFrame are `Pointer`, i.e. native pointers).
