@@ -111,6 +111,9 @@ return {
     ["h7.name"] = {
         { params = { "str: string" }, ret = "string", doc = "Adds str to the engine's name table (if it isn't there yet) and returns it." },
     },
+    ["h7.net.firewall_check"] = {
+        { params = { "protocol: string", "port: int", "fn: function(res: table)" }, ret = "id: int", doc = "Whether Windows Firewall lets inbound protocol (\"UDP\" or \"TCP\") traffic on port reach the game." },
+    },
     ["h7.net.local_ip"] = {
         { params = {  }, ret = "string?", doc = "This PC's LAN address (the one Windows uses to reach the internet), e.g." },
     },
@@ -122,6 +125,9 @@ return {
     },
     ["h7.net.set_lan_host"] = {
         { params = { "result: OnlineGameSearchResult", "ip: string", "port: int" }, ret = "bool", doc = "Makes a server-browser entry point at host ip:port the way a LAN search result does, so the game's own join (JoinOnlineGame → GetResolved..." },
+    },
+    ["h7.net.udp_ports"] = {
+        { params = {  }, ret = "{ {ip: string, port: int}, ... }", doc = "The IPv4 UDP sockets the game process has open (ip is \"0.0.0.0\" for all addresses)." },
     },
     ["h7.net.upnp_add"] = {
         { params = { "port: int", "protocol: string", "fn?: function(res: table)", "description?: string" }, ret = "id: int", doc = "Asks the router (UPnP IGD) to forward port (protocol \"UDP\" or \"TCP\") to this PC's same port." },

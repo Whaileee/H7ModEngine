@@ -641,6 +641,7 @@ The complete reference, with every parameter, return value and error, is in the
 | `h7.net.local_ip()`, `h7.net.upnp_add(port, protocol [, fn])`, `h7.net.upnp_remove(port, protocol [, fn])` | This PC's LAN address; router port mapping |
 | `h7.net.set_lan_host(result, ip, port)` | Point a server-browser entry at a host (joinable through the game's own join) |
 | `h7.net.responder_start(port, key)`, `h7.net.responder_stop()` | Answer the online lobby's TCP challenge (host verification) on a background thread |
+| `h7.net.udp_ports()`, `h7.net.firewall_check(protocol, port, fn)` | The game's open UDP sockets; whether Windows Firewall lets inbound traffic reach the game |
 | `h7.crypto.sha256(data)`, `h7.crypto.hmac_sha256(key, msg)`, `h7.crypto.random_hex(bytes)` | Hex SHA-256 / HMAC-SHA256; secure random hex (synchronous) |
 | `h7.game_content(fn)` | The community content packs in `CookedPC` (edition, per-pack version hashes, fingerprint) |
 

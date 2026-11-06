@@ -103,6 +103,20 @@ static int Occupy(lua_State* L) {
     return 1;
 }
 
+// test.udp_bind(port) -> ok: holds a loopback UDP socket on `port` until exit (for h7.net.udp_ports).
+static int UdpBind(lua_State* L) {
+    int port = (int)luaL_checkinteger(L, 1);
+    SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons((u_short)port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    bool ok = bind(s, (sockaddr*)&a, sizeof a) == 0;
+    if (!ok) closesocket(s);
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) { printf("usage: nethost <script.lua>\n"); return 2; }
     lua_State* L = luaL_newstate();
@@ -113,7 +127,7 @@ int main(int argc, char** argv) {
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
     h7::net::ResponderLoopbackOnly(true);
-    const luaL_Reg test[] = {{"challenge", Challenge}, {"occupy", Occupy}, {nullptr, nullptr}};
+    const luaL_Reg test[] = {{"challenge", Challenge}, {"occupy", Occupy}, {"udp_bind", UdpBind}, {nullptr, nullptr}};
     luaL_newlib(L, test);
     lua_setglobal(L, "test");
     lua_register(L, "done", Done);

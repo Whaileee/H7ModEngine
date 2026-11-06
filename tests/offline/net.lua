@@ -183,6 +183,34 @@ try("responder bad args", function()
     return "errors raised"
 end)
 
+-- Hosting self-check: this process's UDP sockets.
+try("udp_ports", function()
+    local UPORT = 27561
+    assert(test.udp_bind(UPORT), "could not bind UDP " .. UPORT)
+    local found
+    for _, e in ipairs(h7.net.udp_ports()) do
+        assert(type(e.ip) == "string" and math.type(e.port) == "integer")
+        if e.port == UPORT then found = e end
+    end
+    assert(found, "our UDP socket is not listed")
+    return found.ip .. ":" .. found.port
+end)
+try("firewall_check bad args", function()
+    assert(not pcall(h7.net.firewall_check, "ICMP", 1, function() end))
+    assert(not pcall(h7.net.firewall_check, "UDP", 0, function() end))
+    assert(not pcall(h7.net.firewall_check, "UDP", 27015))
+    return "errors raised"
+end)
+
+-- The bundled OnlineLobby mod at least compiles.
+do
+    local here = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("[^/\\]+$", "")
+    for _, f in ipairs({ "main.lua", "browser.lua", "mod.lua" }) do
+        local fn, err = loadfile(here .. "../../dist/mods/OnlineLobby/" .. f)
+        check("OnlineLobby " .. f .. " compiles", fn ~= nil, err)
+    end
+end
+
 -- Network
 local online = os.getenv("H7_NETTEST_ONLINE") == "1"
 check("local_ip", h7.net.local_ip() ~= nil, h7.net.local_ip())
@@ -198,6 +226,16 @@ local steps = {}
 local function nextStep()
     local step = table.remove(steps, 1)
     if step then step() else done(failures) end
+end
+
+-- Windows Firewall verdict for this test program (any verdict is fine; the shape and a clean run matter).
+steps[#steps + 1] = function()
+    h7.net.firewall_check("UDP", 27561, function(r)
+        local verdicts = { allowed = true, blocked = true, ["no rule"] = true, off = true }
+        check("firewall_check", (r.ok and verdicts[r.verdict] and type(r.profiles) == "string") or (not r.ok and r.error),
+            r.ok and (r.verdict .. (r.rule and (" by " .. r.rule) or "") .. " (" .. r.profiles .. ")") or r.error)
+        nextStep()
+    end)
 end
 
 -- Game content scan (local disk; on CI the folder doesn't exist, which must read as "unmodded").

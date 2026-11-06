@@ -10,6 +10,7 @@
 #include "../net/content.h"
 #include "../net/crypto.h"
 #include "../net/responder.h"
+#include "../net/selfcheck.h"
 #include <lua.h>
 #include <lauxlib.h>
 
@@ -697,6 +698,45 @@ static int Net_responder_stop(lua_State*) {
     return 0;
 }
 
+// h7.net.udp_ports() -> { {ip, port}, ... }: this process's IPv4 UDP sockets (e.g. the game's listen port).
+static int Net_udp_ports(lua_State* L) {
+    auto eps = net::ProcessUdpPorts();
+    lua_createtable(L, (int)eps.size(), 0);
+    int i = 1;
+    for (auto& e : eps) {
+        lua_createtable(L, 0, 2);
+        lua_pushstring(L, e.ip.c_str()); lua_setfield(L, -2, "ip");
+        lua_pushinteger(L, e.port); lua_setfield(L, -2, "port");
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
+// h7.net.firewall_check(protocol, port, fn): fn({ok, enabled, verdict, rule?, profiles, error?}) on a worker
+// (reading the firewall rules takes a moment).
+static int Net_firewall_check(lua_State* L) {
+    std::string proto = CheckProtocol(L, 1);
+    int port = CheckPort(L, 2);
+    luaL_checktype(L, 3, LUA_TFUNCTION);
+    int id = Submit(L, 3, [=]() -> Pusher {
+        auto r = std::make_shared<net::FirewallResult>(net::FirewallCheck(proto, port));
+        Log("Firewall: inbound %s %d to this game: %s%s%s (profiles: %s)", proto.c_str(), port,
+            r->ok ? r->verdict.c_str() : ("unknown, " + r->error).c_str(), r->rule.empty() ? "" : " by ",
+            r->rule.c_str(), r->profiles.empty() ? "none" : r->profiles.c_str());
+        return [r](lua_State* L) {
+            lua_newtable(L);
+            lua_pushboolean(L, r->ok); lua_setfield(L, -2, "ok");
+            lua_pushboolean(L, r->enabled); lua_setfield(L, -2, "enabled");
+            lua_pushstring(L, r->verdict.c_str()); lua_setfield(L, -2, "verdict");
+            if (!r->rule.empty()) { lua_pushstring(L, r->rule.c_str()); lua_setfield(L, -2, "rule"); }
+            lua_pushstring(L, r->profiles.c_str()); lua_setfield(L, -2, "profiles");
+            if (!r->error.empty()) { lua_pushstring(L, r->error.c_str()); lua_setfield(L, -2, "error"); }
+        };
+    });
+    lua_pushinteger(L, id);
+    return 1;
+}
+
 // ---------------------------------------------------------------------------------------
 // h7.crypto (synchronous)
 // ---------------------------------------------------------------------------------------
@@ -797,7 +837,8 @@ void OpenNet(lua_State* L) {
     lua_pop(L, 1);
     const luaL_Reg netf[] = {
         {"upnp_add", Net_upnp_add}, {"upnp_remove", Net_upnp_remove}, {"local_ip", Net_local_ip}, {"set_lan_host", NetSetLanHost},
-        {"responder_start", Net_responder_start}, {"responder_stop", Net_responder_stop}, {nullptr, nullptr},
+        {"responder_start", Net_responder_start}, {"responder_stop", Net_responder_stop},
+        {"udp_ports", Net_udp_ports}, {"firewall_check", Net_firewall_check}, {nullptr, nullptr},
     };
     SetSub(L, "net", netf);
     const luaL_Reg crypto[] = {

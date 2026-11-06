@@ -19,7 +19,8 @@
 local json = h7.json
 local LOBBY = tostring(h7.config("Online", "LobbyUrl", "https://h7-lobby.whaileee.workers.dev")):gsub("/+$", "")
 local LOBBY_API = 1      -- the lobby API version this mod speaks
-local PORT = 27015
+local PORT = 27015         -- the game's port ([URL] Port); it moves up when another program holds UDP 27015
+local PORT_RANGE = 20      -- how far: UE3 tries the next ports when binding fails
 local GAME_VERSION = "2.2.1" -- the only build the engine supports
 local MP = "MMH7Game.H7MultiplayerGameManager."
 local CHALLENGE_LABEL = "H7LOBBY challenge key" -- ckey = hmac_sha256(token, this); H7Lobby src/verify.ts
@@ -151,7 +152,7 @@ local function stop_hosting(reason)
     if h.id then api("DELETE", "/v1/games/" .. h.id, nil, h.token) end
     -- Only mappings this mod made, not ones that already existed (the game's own UPnP, the user's router rules).
     for proto, owned in pairs(h.upnpOwned) do
-        if owned then h7.net.upnp_remove(PORT, proto) end
+        if owned then h7.net.upnp_remove(h.port, proto) end
     end
 end
 
@@ -168,7 +169,7 @@ local function describe_game(settings, isDuel)
         map_info = settings:GetMapInfoNumber(),
         slots = math.max(2, math.min(8, settings.NumPublicConnections)),
         players = 1,
-        port = PORT,
+        port = PORT, -- replaced by the port the game really listens on (host_self_check)
         game_version = GAME_VERSION,
         engine_version = h7.version,
         edition = edition(),
@@ -200,13 +201,54 @@ local function heartbeat()
     end)
 end
 
--- The popup for a game the lobby refused because its TCP challenge on PORT got no (right) answer.
+-- The popup for a game the lobby refused because its TCP challenge on the game port got no (right) answer.
 local function unreachable_popup(h, why)
     local hint = " (or turn UPnP on in the OnlineLobby settings)"
     if h.upnp then hint = h.upnpError and (" (UPnP could not do it: " .. h.upnpError .. ")") or "" end
     popup(("The online lobby could not reach this PC on TCP port %d (%s), so the game is not listed. Forward UDP "
         .. "and TCP %d to %s in your router%s, then create the game again. Players on your LAN can still join.")
-        :format(PORT, why, PORT, h7.net.local_ip() or "this PC", hint))
+        :format(h.port, why, h.port, h7.net.local_ip() or "this PC", hint))
+end
+
+-- Before listing a hosted game: which UDP port the game really opened (another program holding 27015 moves it up)
+-- and whether Windows Firewall lets other players reach it. The lobby can only test TCP, so a host it verified
+-- could still be unjoinable (2026-11-06: a friend's game was verified, joining it timed out). Returns the port.
+local function host_self_check(h)
+    local found = {}
+    for _, e in ipairs(h7.net.udp_ports()) do
+        if e.port >= PORT and e.port <= PORT + PORT_RANGE then found[#found + 1] = e end
+    end
+    table.sort(found, function(a, b) return a.port < b.port end)
+    local port = PORT
+    if #found == 0 then
+        log("Online: self-check: the game has no UDP socket on %d-%d yet; assuming %d", PORT, PORT + PORT_RANGE, PORT)
+    else
+        local list = {}
+        for _, e in ipairs(found) do list[#list + 1] = e.ip .. ":" .. e.port end
+        port = found[1].port
+        log("Online: self-check: the game listens on UDP %s%s", table.concat(list, ", "),
+            port ~= PORT and (" (not %d: another program holds it); listing port %d"):format(PORT, port) or "")
+    end
+    local function check(proto, warn)
+        h7.net.firewall_check(proto, port, function(r)
+            if not r.ok then return log("Online: self-check: firewall %s: %s", proto, tostring(r.error)) end
+            log("Online: self-check: Windows Firewall, inbound %s %d: %s%s (%s)", proto, port, r.verdict,
+                r.rule and (" by \"" .. r.rule .. "\"") or "", r.profiles ~= "" and r.profiles or "no active network")
+            if not warn or state.host ~= h then return end
+            if r.verdict == "blocked" or r.verdict == "no rule" then
+                h.firewallBlocked = true
+                popup((("Windows Firewall %s, so players outside this PC can't join even though the game is listed. "
+                    .. "Open Windows Defender Firewall > Allow an app through firewall and tick Private and Public for "
+                    .. "Might & Magic Heroes VII (MMH7Game-Win64-Shipping.exe)%s."):format(
+                    r.verdict == "blocked" and ("blocks incoming UDP %d for this game (rule \"%s\")"):format(port, tostring(r.rule))
+                        or ("has no rule letting incoming UDP %d reach this game"):format(port),
+                    r.verdict == "blocked" and ", or delete that rule under Advanced settings > Inbound Rules" or "")))
+            end
+        end)
+    end
+    check("UDP", true) -- what players need
+    check("TCP", false) -- the lobby's check; logged for diagnosis
+    return port
 end
 
 local function publish(isDuel)
@@ -214,7 +256,7 @@ local function publish(isDuel)
     if not settings then return log("Online: no game settings after creating the game; not listed") end
     stop_hosting("replaced")
     state.joined = nil
-    local h = { upnp = mod.settings.upnp, upnpOwned = {} }
+    local h = { upnp = mod.settings.upnp, upnpOwned = {}, port = PORT, waiting = true }
     state.host = h
     local body = describe_game(settings, isDuel)
 
@@ -222,10 +264,10 @@ local function publish(isDuel)
         -- A fresh secret per registration. The lobby keeps its hash for Bearer auth; the responder only holds the
         -- derived challenge key, so an open TCP port never answers with anything the token could be rebuilt from.
         h.token = h7.crypto.random_hex(32)
-        local ok, err = h7.net.responder_start(PORT, h7.crypto.hmac_sha256(h.token, CHALLENGE_LABEL))
+        local ok, err = h7.net.responder_start(h.port, h7.crypto.hmac_sha256(h.token, CHALLENGE_LABEL))
         h.responderError = not ok and tostring(err) or nil
-        if ok then log("Online: answering the lobby's check on TCP %d", PORT)
-        else log("Online: can't answer the lobby's check on TCP %d: %s", PORT, h.responderError) end
+        if ok then log("Online: answering the lobby's check on TCP %d", h.port)
+        else log("Online: can't answer the lobby's check on TCP %d: %s", h.port, h.responderError) end
         body.token = h.token
         api("POST", "/v1/games", body, nil, function(res, data)
             if state.host ~= h then return end -- the host left meanwhile
@@ -250,33 +292,47 @@ local function publish(isDuel)
         end)
     end
 
-    -- The game listens on UDP 27015 only (measured 2026-11-05); TCP 27015 is the lobby's challenge (responder).
+    -- Runs once the game listens: on the lobby map's load (it opens its UDP socket for "?listen" while loading),
+    -- or after a fallback delay.
+    function h.start()
+        if not h.waiting or state.host ~= h then return end
+        h.waiting = false
+        h.port = host_self_check(h)
+        body.port = h.port
+        h.open_ports()
+    end
+
+    -- The game listens on UDP (measured 2026-11-05); TCP on the same port is the lobby's challenge (responder).
     -- Both are mapped and registration waits for both answers. Ownership is tracked per protocol so leaving
     -- removes only what this mod added.
-    if h.upnp then
-        local pending = 2
-        for _, proto in ipairs({ "UDP", "TCP" }) do
-            h7.net.upnp_add(PORT, proto, function(r)
-                local owned = r.ok and not r.existing
-                if state.host ~= h then -- left meanwhile: undo what we just made
-                    if owned then h7.net.upnp_remove(PORT, proto) end
-                    return
-                end
-                h.upnpOwned[proto] = owned
-                if r.ok then
-                    log("UPnP: the router forwards %s %d to this PC%s", proto, PORT, r.existing and " (already set up)" or "")
-                else
-                    log("UPnP %s %d: %s", proto, PORT, tostring(r.error))
-                    h.upnpError = h.upnpError or (proto .. ": " .. tostring(r.error))
-                end
-                if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
-                pending = pending - 1
-                if pending == 0 then h.register() end
-            end, "Heroes VII online game")
+    function h.open_ports()
+        if h.upnp then
+            local pending = 2
+            for _, proto in ipairs({ "UDP", "TCP" }) do
+                h7.net.upnp_add(h.port, proto, function(r)
+                    local owned = r.ok and not r.existing
+                    if state.host ~= h then -- left meanwhile: undo what we just made
+                        if owned then h7.net.upnp_remove(h.port, proto) end
+                        return
+                    end
+                    h.upnpOwned[proto] = owned
+                    if r.ok then
+                        log("UPnP: the router forwards %s %d to this PC%s", proto, h.port, r.existing and " (already set up)" or "")
+                    else
+                        log("UPnP %s %d: %s", proto, h.port, tostring(r.error))
+                        h.upnpError = h.upnpError or (proto .. ": " .. tostring(r.error))
+                    end
+                    if r.external_ip and r.external_ip ~= "" then body.ipv4 = r.external_ip end
+                    pending = pending - 1
+                    if pending == 0 then h.register() end
+                end, "Heroes VII online game")
+            end
+        else
+            h.register()
         end
-    else
-        h.register()
     end
+
+    h7.after(10, h.start) -- if the map event never comes (it normally does within a few seconds)
     h.timer = h7.every(15, heartbeat)
 end
 
@@ -299,7 +355,9 @@ end)
 h7.hook_post("MMH7Game.H7ReplicationInfo.UpdateOnlineGameStarted", function() stop_hosting("game started") end)
 h7.hook_post("IpDrv.OnlineGameInterfaceImpl.DestroyOnlineGame", function() stop_hosting("session ended") end)
 h7.on("map_loaded", function(map)
-    if map:lower() == "councilhub" then stop_hosting("back in the main menu") end
+    map = map:lower()
+    if map == "councilhub" then stop_hosting("back in the main menu")
+    elseif map == "h7main" and state.host and state.host.waiting then state.host.start() end
 end)
 
 -- ---------------------------------------------------------------------------------------------------------------

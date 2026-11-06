@@ -508,3 +508,15 @@ is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after
 - Testing against a local lobby: `npx wrangler dev --ip 0.0.0.0 --port 8787 --var DEV_ALLOW_PRIVATE:1` and
   `[Online] LobbyUrl=http://<LAN IP>:8787` (not 127.0.0.1: the challenge would go to whatever holds loopback:27015).
 - Not checked yet: redirect blocking and `AllowDownloads` in a real two-PC match.
+
+#### Two-PC test and hosting self-check (2026-11-06)
+- Friend joined the user's verified game and the match started. The other way round the user's join timed out:
+  the lobby had verified the friend's host over TCP 27015 (UPnP UDP+TCP ok), but the user's UDP to
+  178.43.135.35:27015 got no answer (Launch.log: TcpipConnection opened, closed after the timeout, no
+  "NetComeGo: Open"). Cause on the friend's PC not yet known: a Windows Firewall rule blocking the game's UDP, or
+  the game listening on another port.
+- Hosting now waits for the lobby map (`map_loaded` h7main, fallback 10 s), then `host_self_check`: the game's real
+  UDP port from `h7.net.udp_ports()` (27015..27035; listed and mapped instead of 27015 when it moved) and
+  `h7.net.firewall_check` for UDP (popup when "blocked" or "no rule") and TCP (log only). Native code:
+  `src/net/selfcheck.*` (GetExtendedUdpTable, INetFwPolicy2; links iphlpapi.lib). Offline tests pass; this PC's
+  test program reads "no rule (public)". Not yet run in game.
