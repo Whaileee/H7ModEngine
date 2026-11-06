@@ -3,6 +3,7 @@
 | File | Owns |
 |---|---|
 | `runtime.cpp/.h` | Lua state, mod discovery/order (`load_after`)/environments, hot reload, enable/disable via ini, mod settings, events, timers, saved data, exec folder, `kVersion` |
+| `netlib.cpp` | `h7.http`, `h7.json`, `h7.net`, `h7.crypto`: worker pool, result queue delivered by `PumpNet` each tick inside the mod's scope, `RemoveModNet` on unload (also stops the challenge responder the mod started). Also built into the offline test host (`tests/offline/`), so it must only use the runtime functions stubbed there |
 | `bindings.cpp` | The `h7` table; `ObjRef`/`StructRef`/`ArrayRef` proxies; marshaling (`PushElem` engine→Lua, `WriteElem` Lua→engine); `CallUFunction`; hook API |
 
 ## Adding or changing API

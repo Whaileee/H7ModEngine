@@ -36,6 +36,7 @@ struct PropInfo {
 
 // Run after script packages are loaded; fills Layout L. Returns false if a required offset is missing.
 bool Calibrate();
+void SetCalibrationQuiet(bool quiet); // while retrying: don't log each failed attempt
 bool IsCalibrated();
 // Run once the engine is fully initialised (functions bound): finds UObject::ProcessInternal.
 bool CalibrateFunctionPointers();

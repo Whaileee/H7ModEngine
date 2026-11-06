@@ -1,6 +1,6 @@
 # tests/ — in-game tests and drivers
 
-No offline unit tests: everything runs inside the live game. The user must have the game running (launched via
+Everything runs inside the live game, except `offline/`: `build.bat nettest [online]` builds `nethost.exe` (netlib + `src/net` with stubbed runtime) and runs `offline/net.lua` (JSON, crypto and the challenge responder over loopback always; HTTP/UPnP with `online`; CI runs the offline part). The user must have the game running (launched via
 Ubisoft Connect) and, for UI tests, visible and focused. Script list and what each checks:
 `docs/DEVELOPMENT.md` "Testing in game".
 
@@ -20,7 +20,8 @@ Ubisoft Connect) and, for UI tests, visible and focused. Script list and what ea
 - Drive steps with `h7.after`, log the state you check with one prefix (`[selftest] name  OK  value`), emit
   `SHOT <name>` / `DONE` lines for `run_ingame.sh`. Assert on logged state; screenshots of a covered window show
   a stale frame.
-- `*lab.lua` files are experiments kept for reference, not regression tests.
+- `*lab.lua` files are experiments kept for reference, not regression tests. `onlinelab.lua` dumps the LAN session
+  record and hosts a LAN duel (it found the record layout behind `h7.net.set_lan_host`).
 
 ## Input drivers (PowerShell)
 

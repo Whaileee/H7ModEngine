@@ -96,7 +96,7 @@ The DLL can't be replaced while the game runs (Windows keeps it loaded). Lua fil
    Script functions: 18472, bound to ProcessInternal(game+266de40): 18471, unbound: 1, other: 0
    Tick hook on Function Engine.GameViewportClient.PostRender: ok
    Init complete; Lua starts on the next frame
-   Lua 5.4 ready (H7ModEngine 0.1.1)
+   Lua 5.4 ready (H7ModEngine 0.2.0)
    Loaded mod HelloWorld 1.0 by H7ModEngine
    Map: h7logoentry
    Map: councilhub
@@ -312,6 +312,17 @@ Known good targets are listed in `RESUME.md` (new day, damage, combat XP, moveme
 - `re/swfinfo.py <movie.swf> [--strings]`: tags, exported symbols and AS3 classes with their instance and static
   members, for the Scaleform movies dumped by `tests/swfdump.lua`.
 - A Ghidra project may live in `re/ghidra_proj/` (ignored).
+- **`h7.dev`** (engine development only, not for mods): `read(addr, n)`, `write(addr, bytes)`, `u32/u64(addr)`,
+  `alloc(n)` (engine allocator) and `game_base()`. SEH-guarded, so a bad address returns `nil`/`false`. Combine
+  with `obj:get_address()` and `h7.properties(...).offset` to dump native records from Lua without rebuilding the
+  DLL (`tests/onlinelab.lua` found the LAN session record this way).
+- **Size native records from their destructor**, not from a memory dump: the bytes after an object may be the
+  next heap block. The session record looked like 24 bytes in a dump; its destructor touches up to +0x30 (0x38
+  bytes), and building it too small crashed the game when it was deleted.
+- **Crash reports**: the game writes `Documents\My Games\Might & Magic Heroes VII\MMH7Game\Logs\Launch.log` (stack
+  addresses, low 32 bits of `game+rva`, plus engine frames by file and line when `bin\dinput8.pdb` is present) and
+  a minidump next to it (`cdb -z <dmp> -c ".ecxr; k"`). A crashed game can stay alive without a window and keep
+  `bin\dinput8.pdb` locked (link error LNK1201): end the process.
 - `RESUME.md` is the running notebook: what was tried, what was verified in which in-game run, and why.
 
 ## Working with the game's Flash UI

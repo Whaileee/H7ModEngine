@@ -34,6 +34,7 @@ Each subdirectory with its own rules has a `CLAUDE.md`: `src/`, `src/ue3/`, `src
 build.bat                    # -> bin\dinput8.dll (+ .pdb); needs VS 2022 C++ x64 tools
 build.bat deploy             # build + install DLL, ini (only if missing) and ModManager into the game
 build.bat deploy examples    # same, plus all example mods
+build.bat nettest [online]   # build + offline test of h7.json/http/net (online: real HTTP + UPnP)
 ```
 
 `<Game>` defaults to `N:\Ubisoft\games\Might and Magic Heroes VII` (override with `H7_GAME_DIR`). Runtime root is
@@ -43,7 +44,7 @@ build.bat deploy examples    # same, plus all example mods
 
 - **The user launches the game** through Ubisoft Connect; unattended launch does not work. Ask them to start it
   (or to close it before a C++ deploy: the DLL is locked while the game runs).
-- **No offline tests exist.** C++ changes are only "done" once verified in game; say "builds, not yet verified in
+- **Almost no offline tests exist** (only `build.bat nettest [online]` for the networking code). C++ changes are only "done" once verified in game; say "builds, not yet verified in
   game" otherwise. Lua changes can be tested live (mods hot-reload, `exec\` runs scripts once).
 - The game pauses ticks (and hot reload, timers, exec) while its window is unfocused, and stops drawing while
   covered. Trust logged state over screenshots.

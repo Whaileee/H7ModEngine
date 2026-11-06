@@ -142,9 +142,13 @@ std::string ReadFString(uintptr_t at) {
 // Calibration
 // ---------------------------------------------------------------------------
 
+// Calibration is retried while script packages finish linking; only the last attempt logs why it failed.
+static bool g_calibrationQuiet = false;
+void SetCalibrationQuiet(bool quiet) { g_calibrationQuiet = quiet; }
+
 #define REQUIRE(cond, what)                                   \
     if (!(cond)) {                                            \
-        Log("Calibration failed: %s", what);                  \
+        if (!g_calibrationQuiet) Log("Calibration failed: %s", what); \
         return false;                                         \
     }
 

@@ -8,6 +8,8 @@
 #include "../ue3/reflection.h"
 #include "../engine/paths.h"
 #include <windows.h>
+#include <cstdio>
+#include <cstring>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -443,6 +445,63 @@ static StructRef* CheckStruct(lua_State* L, int idx) {
     auto* r = static_cast<StructRef*>(luaL_checkudata(L, idx, kStruct));
     if (!FrameAlive(r->frame)) luaL_error(L, "this value referred to hook parameters and is no longer valid");
     return r;
+}
+
+// h7.net.set_lan_host(result, ip, port): makes an OnlineGameSearchResult point at host ip:port the way a LAN
+// search result does, so the game's own JoinOnlineGame / GetResolvedConnectString connect there.
+// PlatformData of a LAN result is the game's session record (UE3 FSessionInfo, Ubisoft variant), 0x38 bytes on
+// v2.2.1 (measured 2026-11-05: tests/onlinelab.lua dump + disassembly of its destructor game+3231040):
+//   +00 vtable game+1D10EB8 (one entry: the scalar deleting destructor game+3231040)
+//   +08 sockaddr_in HostAddr (16 bytes)
+//   +18 embedded object: vtable game+1EBB900 (destructor game+3688F20 only resets the vtable), two ints
+//   +28 TArray {data, num, max}: the destructor zeroes +30 and appFrees the data pointer
+// The engine deletes the record with appFree (DestroyOnlineGame), so it comes from EngineRealloc. A record that
+// was too small (0x20) made that delete free heap garbage: crash at the join timeout (2026-11-05).
+int NetSetLanHost(lua_State* L) {
+    static constexpr uintptr_t kVtableRva = 0x1D10EB8, kDtorRva = 0x3231040;
+    static constexpr uintptr_t kMemberVtableRva = 0x1EBB900, kMemberDtorRva = 0x3688F20;
+    static constexpr size_t kSize = 0x38;
+    static constexpr uint8_t kDtorSig[16] = {0x48, 0x89, 0x4C, 0x24, 0x08, 0x57, 0x48, 0x83,
+                                             0xEC, 0x30, 0x48, 0xC7, 0x44, 0x24, 0x20, 0xFE};
+    static constexpr uint8_t kMemberDtorSig[8] = {0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8D, 0x05};
+    auto* r = CheckStruct(L, 1);
+    if (ue3::ObjName(r->type) != "OnlineGameSearchResult")
+        luaL_error(L, "set_lan_host: expected an OnlineGameSearchResult, got %s", ue3::ObjName(r->type).c_str());
+    const char* ip = luaL_checkstring(L, 2);
+    lua_Integer port = luaL_checkinteger(L, 3);
+    if (port < 1 || port > 65535) luaL_error(L, "set_lan_host: port must be 1..65535");
+    unsigned a, b, c, d;
+    char tail;
+    if (sscanf(ip, "%u.%u.%u.%u%c", &a, &b, &c, &d, &tail) != 4 || a > 255 || b > 255 || c > 255 || d > 255)
+        luaL_error(L, "set_lan_host: '%s' is not an IPv4 address", ip);
+
+    uintptr_t base = mem::g_game.base;
+    uint8_t sig[sizeof kDtorSig], msig[sizeof kMemberDtorSig];
+    if (mem::ReadOr<uintptr_t>(base + kVtableRva, 0) != base + kDtorRva ||
+        mem::ReadOr<uintptr_t>(base + kMemberVtableRva, 0) != base + kMemberDtorRva ||
+        !mem::Read((const void*)(base + kDtorRva), sig, sizeof sig) || memcmp(sig, kDtorSig, sizeof sig) != 0 ||
+        !mem::Read((const void*)(base + kMemberDtorRva), msig, sizeof msig) || memcmp(msig, kMemberDtorSig, sizeof msig) != 0)
+        luaL_error(L, "set_lan_host: this game build is not supported (session record layout not found)");
+
+    UObject field = ue3::FindField(r->type, "PlatformData");
+    if (!field) luaL_error(L, "set_lan_host: PlatformData not found");
+    uintptr_t slot = r->addr + ue3::Describe(field).offset;
+    // Always a new record: one set earlier may already have been taken over and deleted by the game. A record
+    // the game never takes over (an entry nobody joins) is leaked, 0x38 bytes per listed game.
+    uintptr_t info = reinterpret_cast<uintptr_t>(EngineRealloc(nullptr, kSize));
+    if (!info) luaL_error(L, "set_lan_host: allocation failed");
+    uint8_t rec[kSize] = {};
+    uintptr_t vt = base + kVtableRva, mvt = base + kMemberVtableRva;
+    memcpy(rec, &vt, 8);
+    rec[8] = 2; // AF_INET
+    rec[10] = (uint8_t)(port >> 8);
+    rec[11] = (uint8_t)port; // sin_port, network order
+    rec[12] = (uint8_t)a; rec[13] = (uint8_t)b; rec[14] = (uint8_t)c; rec[15] = (uint8_t)d;
+    memcpy(rec + 0x18, &mvt, 8); // embedded object; its two ints and the TArray at +0x28 stay zero (empty)
+    mem::Write(reinterpret_cast<void*>(info), rec, sizeof rec);
+    mem::Write(reinterpret_cast<void*>(slot), &info, sizeof info);
+    lua_pushboolean(L, 1);
+    return 1;
 }
 
 // Where field f of r is stored. For hook args, out parameters of script-to-script calls live at the caller.

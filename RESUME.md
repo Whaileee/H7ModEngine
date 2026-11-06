@@ -396,3 +396,127 @@ User request: a debug console, enabled from the Mods menu, opened with a key set
 - 2026-11-05 10:25, DLL with `type_name` deployed: selftest 26/26 OK (property type_name -> Vector);
   consolesuggest shows real property types (ViewportConsole: Console, Actor: PlayerController,
   ActivePPOverrides: array<PostProcessSettingsOverride>; Viewport/ViewportFrame are `Pointer`, i.e. native pointers).
+
+## Networking + online lobby (branch `feature/networking`, 2026-11-05, uncommitted)
+
+Goal: replace Ubisoft's shut-down online services (design: [docs/ONLINE.md](docs/ONLINE.md); desync plan:
+[docs/DESYNC.md](docs/DESYNC.md)). The user decided: the online mod is **part of the engine** (bundled like
+ModManager); the Cloudflare Worker lobby is a **separate repo**, `N:/Projects/H7Lobby` (README has the API).
+
+Done (builds; **verified offline only**, not yet in game):
+- `src/net/http.*` (WinHTTP, blocking, worker threads), `src/net/upnp.*` (IUPnPNAT + local IP via a connected
+  UDP socket), `src/lua/netlib.cpp`: `h7.http.request/get/post/cancel`, `h7.json.encode/decode/array/null`,
+  `h7.net.local_ip/upnp_add/upnp_remove`. Results are queued and delivered by `PumpNet` each tick inside the mod's
+  scope; `RemoveModNet` drops callbacks on unload. Links winhttp, ws2_32, ole32, oleaut32.
+- `build.bat nettest [online]`: offline test host `tests/offline/nethost.cpp` + `net.lua`. 2026-11-05: 26/26 OK
+  with `online` (HTTPS GET/POST/404/DNS error via postman-echo.com, unload/cancel drop callbacks, **UPnP map +
+  unmap on the user's router worked**, router reported an external IPv4). CI runs the JSON part.
+- Gotcha: vcvars64.bat fails when the calling batch's paths contain `..` segments (separate test .bat was dropped
+  for that reason; the test lives in build.bat). npm 11 blocks install scripts (H7Lobby approves workerd/esbuild).
+
+In-game run 2026-11-05 18:11 (main menu, councilhub): **verified**. Engine starts clean (no errors in the log),
+`ConfigDefault` added `[Online] LobbyUrl` to the existing ini. `selftest.lua` 30/30 OK incl. json round trip,
+local_ip, and `h7.http.get("https://example.com/")` -> 200, 577 bytes, callback ~70 ms later on the game thread.
+`hooktest.lua` all OK (block / override / restore / PostRender args / script->script 109 calls).
+
+### OnlineLobby mod (2026-11-05, verified in game on one PC)
+- Bundled mod `dist/mods/OnlineLobby` (enabled). Hooks: `H7MainMenuCntl.CheckConnection` (block + return true),
+  `CreateOnlineGame` pre (IsLAN=true), `OnCreateH7GameSessionComplete` post (UPnP, register, heartbeat 15 s),
+  `UpdateOnlineGameStarted` / native `DestroyOnlineGame` / map councilhub (unlist), `SearchOnlineGames` pre (LAN +
+  lobby fetch), `StartFilteringBrowserList` pre (append entries), `JoinSelected` pre + `H7GFxRequestPopup`
+  `YesButtonClicked`/`NoButtonClicked` post (the "join anyway?" prompt; YesNoPopup with None delegates is fine).
+- The hosted lobby map is `h7main`. The host listens on **UDP 27015 only** (no TCP listener); LAN beacon UDP 14001.
+- Session record (PlatformData of a LAN result) = **0x38 bytes**: vtable game+1D10EB8, sockaddr_in at +8, embedded
+  object (vtable game+1EBB900) at +0x18, TArray at +0x28. A 0x20-byte fake crashed the game at the join timeout
+  (`DestroyOnlineGame` freed heap garbage; the first crash looked like a Scaleform render-thread null vcall).
+  Fixed; the timeout now shows the normal popup.
+- `h7.game_content`: 29 packs / 593 packages on the user's install, ~70 ms. Edition = base/modded.
+- UPnP: Windows' IUPnPNAT found no router on the user's PC (VMware adapter `00:50:56:...` present) although the
+  router's UPnP works: the game's own Storm layer had mapped UDP 27015/27416 ("Heroes VII <mac>"). Replaced by a
+  direct SSDP + SOAP client in `src/net/upnp.cpp` (discovery bound to the LAN address); it checks
+  GetSpecificPortMappingEntry first and reports an existing mapping to this PC as `existing` (the mod then never
+  removes it). Verified in game 2026-11-05 20:09: "already set up", game listed, no popup.
+- Startup race (2026-11-05 20:05): `Function Engine.Actor.Touch` existed before Actor's field list was linked, so the
+  one-shot calibration failed and disabled all mods. dllmain now retries calibration for up to 60 s (quiet);
+  verified: "Calibrated at 7246 objects".
+- Browser: the game's join menu has fixed columns (duel: Host/Map/Position/NAT; skirmish adds Players/Turns/Skills,
+  all used; NAT is icon-only), so at the user's choice Online > Join opens `browser.lua` on the map selection window
+  (like ModManager): Host | Map | Players | Version | Status, map picture in the frame (content scanner thumbnail +
+  `mMapThumbnail:SwitchStreamingTo`, `PerformUpdate` until `IsTextureReady`), description + "Compatible with your
+  game." / differences below. Map names need `SetGameType` (duel maps localise elsewhere). Verified in game
+  2026-11-05 (both joins). The map window's own `updateThumbnail` runs every frame while open (normal). A screen
+  flicker the user saw turned out to be their monitor.
+
+Next:
+1. Two-PC test of a real online match.
+2. (done, see above) The bundled OnlineLobby mod (hooks in docs/ONLINE.md). Found 2026-11-05: for LAN queries
+   `StartFilteringBrowserList` only filters by game type and calls `InitializeBrowserList(SearchResults)` (no mesh
+   beacon), so lobby entries can be appended to `SearchResults` before that. First in-game checks it depends on: can a pre-hook change
+   `CreateOnlineGame`'s `IsLAN` arg; dump a LAN search result's `PlatformData` (FSessionInfo layout) so the engine
+   can build lobby results (`make_lan_result`, not written yet); direct join `start ip:27015` between two PCs.
+2. ~~Deploy H7Lobby~~ done 2026-11-05: live at https://h7-lobby.whaileee.workers.dev (Workers Builds from
+   GitHub Whaileee/H7Lobby `main`); register/list/heartbeat/delete round trip checked in production. Engine default
+   `[Online] LobbyUrl` (default ini + `ConfigDefault` in dllmain.cpp).
+
+### First two-PC attempt (2026-11-05 22:04, user + friend over the internet)
+- Friend (base install, 0 packs) saw the host in the browser, got the compatibility prompt, joined anyway.
+- **Host's Launch.log: `NetComeGo: Open TheWorld ... 178.43.135.35` then `Close ... TcpipConnection_0` 7 s later**: the
+  lobby, NAT/UPnP and the direct UDP connection all work; the game itself dropped the connection, most likely the
+  package handshake (host's CookedPC content vs. the friend's unmodded install). Friend's client then showed the
+  20 s timeout. Next: friend's Launch.log for the exact reason; retry with matching content.
+- Friend hosting failed: empty Lua list encoded as `{}` -> lobby "mods must be an array". Fixed in the mod
+  (`json.array()`) and the lobby (accepts `{}`; H7Lobby branch `fix/empty-lists`).
+
+### Host verification (2026-11-05, OnlineLobby 0.2.0; builds + `build.bat nettest` ALL OK, not yet in game)
+Design and threat model: [docs/ONLINE.md "Host verification"](docs/ONLINE.md#host-verification). The lobby side
+is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after both players run the new DLL
+(OnlineLobby 0.1.0 can't host against it: "token is required").
+- `src/net/crypto.*` (CNG: `Sha256Hex`, `HmacSha256Hex`, `RandomHex`; links `bcrypt.lib`), `src/net/responder.*`
+  (TCP challenge responder thread: exactly 43 bytes in, 65 out, 2 s per connection overall via `select` deadlines,
+  one connection at a time, `SO_EXCLUSIVEADDRUSE`, stop = close listener + `shutdown` the open client, join).
+  Lua: `h7.crypto.sha256/hmac_sha256/random_hex`, `h7.net.responder_start/stop` (owned by the starting mod;
+  `RemoveModNet` stops it on unload). The offline host binds loopback only (`ResponderLoopbackOnly`) so the test
+  never triggers a firewall prompt; `test.challenge(port, line [, half_close])` is the loopback client.
+- Shared vectors in `tests/offline/net.lua` match H7Lobby `test/verify.test.ts` (token 0011..eeff x2 -> ckey
+  00f01b98..., nonce 0123..cdef x2 -> 5794bf2e...).
+- Mod: new token + ckey per registration (also on heartbeat 404/403 re-registration), UPnP maps UDP **and TCP**
+  27015 (ownership per protocol), 403 `{error, ip, port}` -> popup naming the reason, `verified ~= true` -> issue
+  "Host not verified by the lobby".
+- Client hardening: `AllowDownloads = false` on the CDOs of `IpDrv.TcpNetDriver` and
+  `OnlineSubsystemUPlay.IpNetDriverStorm` (+ live `Engine.NetDriver`s). **`PlayerController.ClientTravel` is a
+  `native event`** (hooks get no args, can't block), so redirect blocking reads `PendingURL` in the
+  `PreClientTravel` script event (called first by the native) and post-hooks `ClientTravel` to replace the queued
+  travel with `ConsoleCommand("disconnect")`; only while `WorldInfo.NetMode == NM_Client` after a lobby join,
+  never for `TRAVEL_Relative`. Setting `block_redirects` (default on).
+- With downloads off, a client missing one of the host's packages should now fail the package handshake at once
+  instead of trying to download it (relevant to the two-PC disconnect above).
+- To verify in game: log "Responder: listening ... TCP 27015", "UPnP: ... TCP 27015", "listed ... (verified)";
+  `h7.find_class("IpDrv.TcpNetDriver"):get_default().AllowDownloads` is false in the debug console; leaving ->
+  "Responder: stopped", mappings removed; UPnP off + no TCP forward -> the 403 popup; a normal map transition in a
+  joined match isn't blocked (no "blocked the host's redirect" line); Windows Firewall may prompt once.
+
+#### In game, one PC (2026-11-05 23:16-23:21, against `wrangler dev` of `feature/verify-hosts` with VERIFY on)
+- **Apple Mobile Device Service (iTunes/iCloud) listens on TCP 127.0.0.1:27015**, so binding 0.0.0.0:27015 failed
+  ("already in use") and the lobby's challenge reached Apple's service ("closed early"): the 403 popup appeared
+  correctly. Fix: `ResponderStart` falls back to binding the LAN address (`LocalIp()`), which is what UPnP and
+  manual forwards point at. Common on players' PCs; keep the fallback.
+- After the fix: "listening ... on 192.168.18.250", challenge answered, listed `verified: true`, heartbeats accepted
+  (address pinning OK), leaving -> "Responder: stopped" and the game deleted from the lobby.
+- The router answered the first SOAP request of the session (TCP GetSpecificPortMappingEntry/AddPortMapping) with
+  a garbled reply (WinHTTP 12152) while the UDP request 7 ms later worked: `Soap()` now retries a transport
+  failure once after 300 ms. Not yet rechecked in game.
+- Testing against a local lobby: `npx wrangler dev --ip 0.0.0.0 --port 8787 --var DEV_ALLOW_PRIVATE:1` and
+  `[Online] LobbyUrl=http://<LAN IP>:8787` (not 127.0.0.1: the challenge would go to whatever holds loopback:27015).
+- Not checked yet: redirect blocking and `AllowDownloads` in a real two-PC match.
+
+#### Two-PC test and hosting self-check (2026-11-06)
+- Friend joined the user's verified game and the match started. The other way round the user's join timed out:
+  the lobby had verified the friend's host over TCP 27015 (UPnP UDP+TCP ok), but the user's UDP to
+  178.43.135.35:27015 got no answer (Launch.log: TcpipConnection opened, closed after the timeout, no
+  "NetComeGo: Open"). Cause on the friend's PC not yet known: a Windows Firewall rule blocking the game's UDP, or
+  the game listening on another port.
+- Hosting now waits for the lobby map (`map_loaded` h7main, fallback 10 s), then `host_self_check`: the game's real
+  UDP port from `h7.net.udp_ports()` (27015..27035; listed and mapped instead of 27015 when it moved) and
+  `h7.net.firewall_check` for UDP (popup when "blocked" or "no rule") and TCP (log only). Native code:
+  `src/net/selfcheck.*` (GetExtendedUdpTable, INetFwPolicy2; links iphlpapi.lib). Offline tests pass; this PC's
+  test program reads "no rule (public)". Not yet run in game.
