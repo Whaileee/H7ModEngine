@@ -7,6 +7,7 @@
 | `mods/ModManager/` | The in-game Mods menu (`hidden = true`). Always deployed, and embedded in `dinput8.dll` with the ini (`build.bat` -> `src/engine/bundle.cpp`): a DLL whose bundled ModManager differs from the one it last installed overwrites the game copy at startup. See its own `CLAUDE.md` |
 | `mods/HelloWorld`, `DailyGold`, `CombatXP`, `DamageScale`, `HeroMovement` | Example mods referenced by the docs and tests. Ship `enabled = false` (except HelloWorld); installed only by `build.bat deploy examples` |
 | `mods/OnlineLobby/` | Online multiplayer through H7Lobby (`enabled = true`, category Multiplayer). `main.lua`: hosting, compatibility, joining; `browser.lua`: the Online > Join browser on the map selection window (same window and rules as ModManager). Bundled and deployed like ModManager. Design: `docs/ONLINE.md`; lobby API: H7Lobby README |
+| `mods/MPSyncDebug/` | Desync tracing (`enabled = false`, category Developer, so the lobby's compatibility check ignores it). `main.lua`: hooks that write `logs\mpsync-<host|client>-<time>.log` during MP games; `state.lua`: the idle-state snapshot and hash. Bundled and deployed like ModManager. Read the logs with `tools/mpsync_diff.py`; design: `docs/DESYNC.md` Phase A |
 | `lib/` | Shared Lua libraries (currently empty) |
 
 ## The two copies problem

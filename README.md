@@ -81,6 +81,7 @@ The engine ships with these example mods:
 | ModManager | The Mods entry in the main menu (hidden from its own list) | on |
 | DebugConsole | In-game Lua console and live log for mod makers; key in `H7ModEngine.ini`, `[Console] Key=` (default Tilde) | off |
 | OnlineLobby | Online multiplayer without Ubisoft's (shut down) services: Online > Create lists your game in the community lobby ([H7Lobby](https://github.com/Whaileee/H7Lobby)), Online > Join browses it. The host needs UDP and TCP 27015 reaching their PC (opened through UPnP when the router allows it). Design: [docs/ONLINE.md](docs/ONLINE.md) | on |
+| MPSyncDebug | For finding multiplayer desyncs: logs every command, action counter step, synced random draw and out-of-sync check to `logs\mpsync-*.log`; `tools\mpsync_diff.py` compares two players' logs. See [docs/DESYNC.md](docs/DESYNC.md) | off |
 
 ## Writing mods
 
@@ -111,7 +112,7 @@ git clone --recursive https://github.com/Whaileee/H7ModEngine.git
 build.bat
 ```
 
-`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini, ModManager, DebugConsole and OnlineLobby into the game
+`build.bat` writes `bin\dinput8.dll`. `build.bat deploy` also copies it, the ini, ModManager, DebugConsole, OnlineLobby and MPSyncDebug into the game
 folder; `build.bat deploy examples` adds the example mods. Set `H7_GAME_DIR` to point it at your installation. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
 for the architecture, the development loop, in-game testing and the reverse-engineering notes.
 

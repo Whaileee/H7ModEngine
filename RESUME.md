@@ -520,3 +520,17 @@ is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after
   `h7.net.firewall_check` for UDP (popup when "blocked" or "no rule") and TCP (log only). Native code:
   `src/net/selfcheck.*` (GetExtendedUdpTable, INetFwPolicy2; links iphlpapi.lib). Offline tests pass; this PC's
   test program reads "no rule (public)". Not yet run in game.
+
+### Desync tracing: MPSyncDebug (2026-11-06)
+- The user recalls desyncs right after the **host alt-tabbed**. Source analysis in [docs/DESYNC.md](docs/DESYNC.md)
+  section 4: the host's whole game freezes while unfocused (`SetPause` is stubbed in `H7PlayerController`; it's the
+  `SleepEx` loop), and lockstep ordering is UAC-stamp based, with the sender running instant commands at once, so a
+  frozen host widens the UAC collision window. The game's own MP diagnostics go through the native
+  `PrintLogMessage`, which writes nothing in the shipping build.
+- New bundled mod `dist/mods/MPSyncDebug` (Lua only, ships off, category Developer) + `tools/mpsync_diff.py`.
+  Smoke-tested offline (stubbed `h7`, 42 hooks registered, all tags written; the diff script found planted
+  collisions, RNG, step and state differences). **Not yet run in game.** First in-game checks: no "could not hook"
+  warning at load, a `logs\mpsync-host-*.log` appears in a LAN game, STEP/SEND/RECV lines carry sane UACs, a 20 s
+  alt-tab gives a GAP line, and the hooks don't slow combat noticeably (RNG trace can be turned off).
+- Offline Lua: there is no lua.exe in the repo; for syntax checks compile one from `third_party/lua` (`cl l*.c lua.c`)
+  in a scratch folder.
