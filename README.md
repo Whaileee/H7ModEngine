@@ -143,10 +143,11 @@ The details are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#architecture).
 
 ## Status
 
-Version 0.2.0. The engine, hooks, the debug console and all example mods are verified in game on v2.2.1. 0.2.0 adds
+Version 0.2.1. The engine, hooks, the debug console and all example mods are verified in game on v2.2.1. 0.2.0 added
 networking for mods (`h7.http`, `h7.json`, `h7.net`, `h7.crypto`) and the OnlineLobby mod: hosting, the lobby
 browser and host verification are verified in game on one PC; a full match between two PCs over the internet is
-not yet. The API may still change.
+not yet. 0.2.1 adds opt-in desync reports to OnlineLobby and the MPSyncDebug tracing mod (tested offline, not yet in
+game). The API may still change.
 
 ## Disclaimer
 

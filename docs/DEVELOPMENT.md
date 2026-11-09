@@ -96,7 +96,7 @@ The DLL can't be replaced while the game runs (Windows keeps it loaded). Lua fil
    Script functions: 18472, bound to ProcessInternal(game+266de40): 18471, unbound: 1, other: 0
    Tick hook on Function Engine.GameViewportClient.PostRender: ok
    Init complete; Lua starts on the next frame
-   Lua 5.4 ready (H7ModEngine 0.2.0)
+   Lua 5.4 ready (H7ModEngine 0.2.1)
    Loaded mod HelloWorld 1.0 by H7ModEngine
    Map: h7logoentry
    Map: councilhub
