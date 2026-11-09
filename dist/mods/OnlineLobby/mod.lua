@@ -1,6 +1,6 @@
 return {
     name = "OnlineLobby",
-    version = "0.2.0",
+    version = "0.3.0",
     author = "H7ModEngine",
     description = "Online multiplayer without Ubisoft's servers: the Online menu hosts and finds games through the "
         .. "community lobby (H7Lobby, [Online] LobbyUrl in H7ModEngine.ini). The host's PC runs the game, like LAN; "
@@ -21,5 +21,11 @@ return {
           description = "While in a game joined through the lobby, refuse the host's requests to send this game to "
               .. "another server (it disconnects instead). Turn off only if a normal game ever gets disconnected "
               .. "by it." },
+        { key = "report_desyncs", label = "Send desync reports", default = false,
+          description = "Help fix multiplayer desyncs. When a game goes out of sync (or a command arrives too late "
+              .. "to run), send the last few hundred multiplayer events (commands, turn counters, random rolls, "
+              .. "heroes, armies and resources) with your game, engine and mod versions to the lobby. No names, "
+              .. "addresses or save games; at most 3 reports of up to 96 KB per game, kept 30 days. Works best "
+              .. "when every player turns it on." },
     },
 }

@@ -60,6 +60,33 @@ that peer only and every later roll differs. The OOS check compares the RNG coun
   `UpdateApplyDamageEndTurn` and `IsExpiredApplyDamageEndTurn`.
 - Different content: other mods or a different game build on each peer. The lobby can prevent this (see below).
 
+### 4. Host alt-tab (reported by the user, no log yet)
+
+The user remembers desyncs right after the **host** alt-tabbed and came back. What the sources and earlier runs show
+(analysis 2026-11-06, not yet reproduced with logging):
+
+- **The host's whole simulation freezes while its window is unfocused.** `bPauseOnLossOfFocus=FALSE` and
+  `H7PlayerController.SetPause` is stubbed (always `return false`), so it isn't the UE3 pause: the main thread sits
+  in a `SleepEx` loop (seen with `cdb` in run 5, see RESUME.md). The world, the net driver and every timer stop on
+  the host; clients keep ticking and keep sending reliable RPCs. On return the host gets one long frame and
+  processes the whole backlog at once.
+- **Lockstep ordering relies on low latency.** Every command carries the sender's current UAC, and the sender of an
+  instant command executes it at once (`H7InstantCommandManager.StartCommand` → `ExecuteInstantCommand`, which
+  increments the UAC). Receivers run a queued command only when their UAC equals its stamp. If two peers stamp
+  commands with the same UAC, one of them is never run on the other peer (the game's own
+  `"!!!!!! Queued command had illegal uac"` path in `H7MultiplayerCommandManager` drops it). A frozen host turns a
+  ~100 ms collision window into the whole alt-tab length.
+- **Real-time timers that run on every peer:** the sync-up window (`mIsSynchingUp` cleared after 1 s of
+  `RealTimeSeconds`; a frozen host can't answer within it), the sim-turn start-combat timeout
+  (`H7SimTurnCommandManager.Update`, 60 s), and the combat turn timer in the tactics phase (`NextPlayer()` on
+  expiry). Combat commands also wait `CreationTime + 2 s` of game time. The adventure and combat turn timers only
+  act for the local player and send a normal command, so they look safe.
+- **The game's own MP diagnostics are invisible:** `H7ReplicationInfo.PrintLogMessage` is native and writes
+  nothing in the shipping build (no "illegal uac" or OOS lines in any `Launch-backup-*.log`).
+
+To prove or rule out: run the MPSyncDebug traces below with a deliberate host alt-tab (adventure turn, combat,
+tactics phase, sim turns), and log tick gaps (real-time frame delta > 1 s) next to the UAC trace.
+
 ## Fix plan
 
 ### Phase A: find the bugs (instrumentation mod `MPSyncDebug`)
@@ -74,6 +101,35 @@ that peer only and every later roll differs. The OOS check compares the RNG coun
    either through a mod-only reliable function on an existing replicated actor or through the lobby server, and log
    the first UAC where they differ, with a full state dump from both sides.
 4. A small script (in `tools/`) that merges the two peers' logs and prints the first divergence.
+
+**Status (2026-11-09): the tracer is `dist/lib/mpsync.lua`** (shared, bundled), used by MPSyncDebug 0.2.0 (writes
+it to a file; bundled, category Developer so the lobby's compatibility check ignores it, ships off) and by
+OnlineLobby 0.3.0's opt-in desync reports ([ONLINE.md "Desync reports"](ONLINE.md#desync-reports)). Smoke-tested
+offline with a stubbed `h7` (both mods tracing at once, a report accepted by a local lobby and diffed), **not yet
+run in game**. What it covers, by the items above:
+
+- 1: done without the caller: every `GetRandomFloat` / `GetRandomInt` / `GetRandomIntRange` draw with the counter, the
+  pool refills and `SetCounter`. Hooks can't see the calling function yet; the lines around a draw (which command
+  was running) stand in for it. A `h7.caller()` engine API would add it (DLL change).
+- 2: not done (native hooks get no arguments or caller; needs the same engine work).
+- 3: done locally instead of exchanged: while nothing runs and the UAC moved, a snapshot of players' resources and
+  every hero (position, movement points, army), or every combat stack (size, top HP, cell), with a hash. Towns,
+  skills and buffs are not in it yet.
+- 4: `tools/mpsync_diff.py host.log client.log`: alerts per log, UAC collisions (one UAC used for different commands
+  on the two PCs) and commands one PC never queued, the first differing RNG draw with context, the first differing
+  counter step, and the first differing snapshot line by line.
+
+For the alt-tab case (section 4) it also logs the command flow around the UAC: `SEND`/`ISEND` (stamped UAC),
+`RELAY` on the host, `RECV`/`IRECV`, or `LATE`/`ILATE` when the stamp is already behind this PC's counter (the
+command will be dropped), `DROP?` from `UnqueuePreparedCommands`, `STUCK`/`WAIT` from a 2 s watchdog over the MP queues, `GAP`
+when no frame ran for 0.5 s or more (the background freeze shows up when the window comes back) and `BURST` (three or more
+commands in one frame). The game's own OOS check and repair are logged too (`CHECK`, `RCHECK`, `OOS`, `SYNCH*`).
+
+**Test run:** both players turn MPSyncDebug on in the Mods menu, play a LAN or lobby game, and the host alt-tabs
+for 20 to 30 s in each situation: during their own adventure turn, during the client's turn, in combat, during
+tactics and with sim turns. Each player sends their newest `H7ModEngine\logs\mpsync-*.log` (one per game session),
+and the diff script compares the two logs. Players who only turned on OnlineLobby's "Send desync reports" need to
+do nothing: `tools/fetch_reports.py --diff` collects and compares their reports.
 
 ### Phase B: fix the causes (`MPSyncFix` mod)
 

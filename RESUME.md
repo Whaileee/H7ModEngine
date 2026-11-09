@@ -520,3 +520,36 @@ is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after
   `h7.net.firewall_check` for UDP (popup when "blocked" or "no rule") and TCP (log only). Native code:
   `src/net/selfcheck.*` (GetExtendedUdpTable, INetFwPolicy2; links iphlpapi.lib). Offline tests pass; this PC's
   test program reads "no rule (public)". Not yet run in game.
+
+### Desync tracing: MPSyncDebug (2026-11-06)
+- The user recalls desyncs right after the **host alt-tabbed**. Source analysis in [docs/DESYNC.md](docs/DESYNC.md)
+  section 4: the host's whole game freezes while unfocused (`SetPause` is stubbed in `H7PlayerController`; it's the
+  `SleepEx` loop), and lockstep ordering is UAC-stamp based, with the sender running instant commands at once, so a
+  frozen host widens the UAC collision window. The game's own MP diagnostics go through the native
+  `PrintLogMessage`, which writes nothing in the shipping build.
+- New bundled mod `dist/mods/MPSyncDebug` (Lua only, ships off, category Developer) + `tools/mpsync_diff.py`.
+  Smoke-tested offline (stubbed `h7`, 42 hooks registered, all tags written; the diff script found planted
+  collisions, RNG, step and state differences). **Not yet run in game.** First in-game checks: no "could not hook"
+  warning at load, a `logs\mpsync-host-*.log` appears in a LAN game, STEP/SEND/RECV lines carry sane UACs, a 20 s
+  alt-tab gives a GAP line, and the hooks don't slow combat noticeably (RNG trace can be turned off).
+- Offline Lua: there is no lua.exe in the repo; for syntax checks compile one from `third_party/lua` (`cl l*.c lua.c`)
+  in a scratch folder.
+
+### Opt-in desync reports (2026-11-09)
+- The tracer moved to `dist/lib/mpsync.lua` (bundled in the DLL via a new `build.bat` line for `dist\lib\*.lua`):
+  `mpsync.new{settings, on_start, on_line, on_stop}` per mod, so each mod's hooks belong to it; `destroy()` removes
+  them. MPSyncDebug 0.2.0 is now a file writer over it (its `state.lua` is gone). `RECV ... LATE` became its own
+  tags `LATE`/`ILATE`.
+- OnlineLobby 0.3.0: setting `report_desyncs` (off; toggled live through `setting_changed`, no reload so hosting
+  survives), `reports.lua`: ring buffer of 800 lines; triggers OOS/OOSREMOTE/LATE/ILATE/DROP?/STUCK; sends 5 s
+  later, at most 3 per game, 60 s apart, newest 96 KB plus a fresh snapshot; `state.lobbyGame` (hosted or joined id)
+  labels both players' reports of one game.
+- H7Lobby branch `feature/desync-reports`: `POST /v1/reports` + admin list/get/delete, `Reports` SQLite DO
+  (migration v2), no IP stored, caps 3/min per caller (5 at the edge), 5 per session, 300/day, 2000 stored, 30 days.
+  `npm test` 56/56, typecheck, `wrangler types --check` and a dry-run deploy pass. Deploy only after merging; the
+  client's reports get 404 until then (logged, harmless).
+- `tools/fetch_reports.py --diff` (token: `H7LOBBY_ADMIN_TOKEN` in the git-ignored `.env`, generated 2026-11-09; the same value must be the Worker secret `ADMIN_TOKEN`) saves reports as MPSyncDebug-format logs per game
+  and diffs host vs client.
+- Verified offline only: a stubbed-h7 harness ran MPSyncDebug and the reports tracer together (84 hooks, 42 after
+  turning reports off), built one report per role, a local `wrangler dev` accepted both bodies, and
+  `fetch_reports.py --diff` pulled them back and found the planted difference. **Not yet run in game.**

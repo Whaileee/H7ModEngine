@@ -8,3 +8,8 @@
 /re/dump/
 /re/ghidra_proj/
 /re/*.log
+
+# Local secrets (H7LOBBY_ADMIN_TOKEN for tools/fetch_reports.py) and the desync reports it downloads
+.env
+/reports/
+__pycache__/
