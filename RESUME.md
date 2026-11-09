@@ -548,7 +548,7 @@ is H7Lobby branch `feature/verify-hosts` (`src/verify.ts`); deploy it only after
   (migration v2), no IP stored, caps 3/min per caller (5 at the edge), 5 per session, 300/day, 2000 stored, 30 days.
   `npm test` 56/56, typecheck, `wrangler types --check` and a dry-run deploy pass. Deploy only after merging; the
   client's reports get 404 until then (logged, harmless).
-- `tools/fetch_reports.py --diff` (token in `H7LOBBY_ADMIN_TOKEN`) saves reports as MPSyncDebug-format logs per game
+- `tools/fetch_reports.py --diff` (token: `H7LOBBY_ADMIN_TOKEN` in the git-ignored `.env`, generated 2026-11-09; the same value must be the Worker secret `ADMIN_TOKEN`) saves reports as MPSyncDebug-format logs per game
   and diffs host vs client.
 - Verified offline only: a stubbed-h7 harness ran MPSyncDebug and the reports tracer together (84 hooks, 42 after
   turning reports off), built one report per role, a local `wrangler dev` accepted both bodies, and

@@ -207,7 +207,7 @@ it is on and a multiplayer game runs, OnlineLobby runs the same lockstep tracer 
   game), the lobby game id (hosted or joined; empty on LAN), role, player slot, map, sim turns, game and engine
   versions, gameplay mods, edition and content fingerprint. No player or profile names, no addresses, no saves.
 - **Lobby:** `POST /v1/reports` (H7Lobby README "Desync reports"): its own Durable Object, no IP stored, 30 days.
-- **Reading them:** `tools/fetch_reports.py --diff` (admin token in `H7LOBBY_ADMIN_TOKEN`) saves each report as an
+- **Reading them:** `tools/fetch_reports.py --diff` (admin token: `H7LOBBY_ADMIN_TOKEN` in the git-ignored `.env`, or the same environment variable) saves each report as an
   MPSyncDebug-format log under `reports/<game id>/` and runs `tools/mpsync_diff.py` on every game whose host and
   client both reported.
 

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Download desync reports from the lobby (admin token needed) and compare each game's host and client report.
 
-    set H7LOBBY_ADMIN_TOKEN=...            (or --token)
     python tools/fetch_reports.py [--game ID] [--session HEX] [--days N] [--out DIR] [--diff] [--lobby URL]
 
-Writes <out>/<game id, or "lan-<session>">/<time>-<role>-<report id>.log: a "# report ..." line with the report's
+The admin token (the H7Lobby Worker's ADMIN_TOKEN secret) comes from --token, the H7LOBBY_ADMIN_TOKEN environment
+variable, or H7LOBBY_ADMIN_TOKEN=... in the repository's .env file (git-ignored), in that order.
+
+Writes <out> (default: reports/ in the repository, git-ignored: reports hold players' game traces)/<game id, or "lan-<session>">/<time>-<role>-<report id>.log: a "# report ..." line with the report's
 fields, then the trace itself (the MPSyncDebug log format, so tools/mpsync_diff.py reads it). Reports already
 downloaded are skipped. --diff runs tools/mpsync_diff.py on the newest host and client report of every game that
 has both. Players send reports only when they turned on OnlineLobby's "Send desync reports"; the API is in the
@@ -24,6 +26,20 @@ sys.path.insert(0, str(HERE))
 import mpsync_diff  # noqa: E402
 
 DEFAULT_LOBBY = "https://h7-lobby.whaileee.workers.dev"
+REPO = HERE.parent
+
+
+def dotenv(name):
+    """A value from the repository's .env file (KEY=value lines; # comments), or None."""
+    try:
+        lines = (REPO / ".env").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep and key.strip() == name:
+            return value.strip().strip('"').strip("'") or None
+    return None
 
 
 def get(lobby, path, token):
@@ -36,15 +52,15 @@ def get(lobby, path, token):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--lobby", default=DEFAULT_LOBBY)
-    ap.add_argument("--token", default=os.environ.get("H7LOBBY_ADMIN_TOKEN"))
+    ap.add_argument("--token", default=os.environ.get("H7LOBBY_ADMIN_TOKEN") or dotenv("H7LOBBY_ADMIN_TOKEN"))
     ap.add_argument("--game")
     ap.add_argument("--session")
     ap.add_argument("--days", type=float, default=30, help="only reports from the last N days (default 30)")
-    ap.add_argument("--out", default="reports")
+    ap.add_argument("--out", default=str(REPO / "reports"))
     ap.add_argument("--diff", action="store_true", help="compare each game's newest host and client report")
     args = ap.parse_args()
     if not args.token:
-        ap.error("no admin token: pass --token or set H7LOBBY_ADMIN_TOKEN")
+        ap.error("no admin token: pass --token, set H7LOBBY_ADMIN_TOKEN, or put H7LOBBY_ADMIN_TOKEN=... in .env")
     lobby = args.lobby.rstrip("/")
 
     query = {"limit": "500", "since": str(int((time.time() - args.days * 86400) * 1000))}
