@@ -48,6 +48,8 @@ for %%f in ("%ROOT%dist\mods\ModManager\*.lua") do call :bundle sync "%%~ff" "mo
 for %%f in ("%ROOT%dist\mods\DebugConsole\*.lua") do call :bundle sync "%%~ff" "mods\DebugConsole\%%~nxf"
 for %%f in ("%ROOT%dist\mods\OnlineLobby\*.lua") do call :bundle sync "%%~ff" "mods\OnlineLobby\%%~nxf"
 for %%f in ("%ROOT%dist\mods\MPSyncDebug\*.lua") do call :bundle sync "%%~ff" "mods\MPSyncDebug\%%~nxf"
+rem Shared libraries the bundled mods require (lib\mpsync.lua: OnlineLobby's desync reports and MPSyncDebug).
+for %%f in ("%ROOT%dist\lib\*.lua") do call :bundle sync "%%~ff" "lib\%%~nxf"
 rc/nologo /fo "%ROOT%build\obj\bundle.res" "%BUNDLE%\bundle.rc" || exit /b 1
 
 link /nologo /DLL /DEBUG /OPT:REF /OUT:"%ROOT%bin\dinput8.dll" /DEF:"%ROOT%src\proxy\dinput8.def" *.obj bundle.res user32.lib shell32.lib winhttp.lib ws2_32.lib ole32.lib oleaut32.lib bcrypt.lib iphlpapi.lib || exit /b 1

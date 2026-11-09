@@ -80,7 +80,7 @@ The engine ships with these example mods:
 | HeroMovement | The human player's heroes get more movement points per day | off |
 | ModManager | The Mods entry in the main menu (hidden from its own list) | on |
 | DebugConsole | In-game Lua console and live log for mod makers; key in `H7ModEngine.ini`, `[Console] Key=` (default Tilde) | off |
-| OnlineLobby | Online multiplayer without Ubisoft's (shut down) services: Online > Create lists your game in the community lobby ([H7Lobby](https://github.com/Whaileee/H7Lobby)), Online > Join browses it. The host needs UDP and TCP 27015 reaching their PC (opened through UPnP when the router allows it). Design: [docs/ONLINE.md](docs/ONLINE.md) | on |
+| OnlineLobby | Online multiplayer without Ubisoft's (shut down) services: Online > Create lists your game in the community lobby ([H7Lobby](https://github.com/Whaileee/H7Lobby)), Online > Join browses it. The host needs UDP and TCP 27015 reaching their PC (opened through UPnP when the router allows it). Optional setting "Send desync reports" (off): when a game goes out of sync, sends the last few hundred multiplayer events, without names or addresses, so desyncs can be fixed ([details](docs/ONLINE.md#desync-reports)). Design: [docs/ONLINE.md](docs/ONLINE.md) | on |
 | MPSyncDebug | For finding multiplayer desyncs: logs every command, action counter step, synced random draw and out-of-sync check to `logs\mpsync-*.log`; `tools\mpsync_diff.py` compares two players' logs. See [docs/DESYNC.md](docs/DESYNC.md) | off |
 
 ## Writing mods

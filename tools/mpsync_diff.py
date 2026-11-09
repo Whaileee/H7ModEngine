@@ -11,7 +11,8 @@ Reports, in this order:
   3. The first synced random draw that differs (with what each PC did just before it).
   4. The first counter step whose RNG or ID counter differs.
   5. The first state snapshot that differs at the same UAC, line by line.
-Line format and tags: dist/mods/MPSyncDebug/main.lua; background: docs/DESYNC.md.
+Works on MPSyncDebug log files and on desync reports (tools/fetch_reports.py saves them in the same format).
+Line format and tags: dist/lib/mpsync.lua; background: docs/DESYNC.md.
 """
 import re
 import sys
@@ -19,7 +20,7 @@ from collections import Counter
 
 LINE = re.compile(r"^\s*(-?[\d.]+) u=(-?\d+) r=(-?\d+) (\S+)(?: (.*))?$")
 ALERTS = {"GAP", "BURST", "DROP?", "STUCK", "WAIT", "OOS", "OOSTYPE", "OOSREMOTE", "SYNCHSTART", "SYNCHREQ",
-          "SYNCHASK", "SYNCH", "UACSET", "RNGSET", "CANCELLED", "SIMCOMBATEND", "MAP"}
+          "SYNCHASK", "SYNCH", "UACSET", "RNGSET", "CANCELLED", "SIMCOMBATEND", "MAP", "LATE", "ILATE"}
 CONTEXT = 8
 
 
@@ -67,8 +68,7 @@ def alerts(log):
     print("  events: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     shown = 0
     for e in log.events:
-        late = e["tag"] in ("RECV", "IRECV") and e["detail"].endswith("LATE")
-        if e["tag"] in ALERTS or late:
+        if e["tag"] in ALERTS:
             print("  " + fmt(e))
             shown += 1
     if not shown:

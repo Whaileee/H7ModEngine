@@ -31,6 +31,7 @@ local state = {
     host = nil,            -- { id, token, timer, ... } while our game is in the lobby
     confirm = nil,         -- the lobby game while the "join anyway?" popup is open
     joined = nil,          -- { ip, port } of the last host joined through the lobby
+    lobbyGame = nil,       -- lobby id of the game this PC hosts or joined (labels desync reports)
     redirect = nil,        -- a ClientTravel away from that host, seen in PreClientTravel
 }
 
@@ -256,6 +257,7 @@ local function publish(isDuel)
     if not settings then return log("Online: no game settings after creating the game; not listed") end
     stop_hosting("replaced")
     state.joined = nil
+    state.lobbyGame = nil
     local h = { upnp = mod.settings.upnp, upnpOwned = {}, port = PORT, waiting = true }
     state.host = h
     local body = describe_game(settings, isDuel)
@@ -286,6 +288,7 @@ local function publish(isDuel)
                 return
             end
             h.id = data.id
+            state.lobbyGame = data.id
             if type(data.token) == "string" then h.token = data.token end -- a lobby that issues its own token
             log("Online game listed in the lobby as %s at %s:%d%s", data.id, data.ip, data.port,
                 data.verified and " (verified)" or "")
@@ -435,6 +438,7 @@ local function join(g)
     m.SearchResults:add({ GameSettings = s })
     h7.net.set_lan_host(m.SearchResults[1], g.ip, g.port)
     state.joined = { ip = tostring(g.ip), port = g.port }
+    state.lobbyGame = g.id
     log("Online: joining %s (%s) at %s:%d", g.name, g.id, g.ip, g.port)
     m:JoinSelected(0) -- map check, then JoinOnlineGame -> GetResolvedConnectString -> start ip:port
 end
@@ -530,7 +534,33 @@ h7.hook_post("Engine.PlayerController.ClientTravel", function(pc)
     if not ok then log("Online: disconnect failed: %s", tostring(err)) end
 end)
 
+-- ---------------------------------------------------------------------------------------------------------------
+-- Opt-in desync reports (reports.lua)
+-- ---------------------------------------------------------------------------------------------------------------
+
+-- Guarded: a missing lib\mpsync.lua (an install without the bundled library) must not break online play.
+local okReports, reports = pcall(mod.require, "reports")
+if not okReports then
+    log("Online: desync reports unavailable: %s", tostring(reports))
+    reports = { init = function() end, shutdown = function() end }
+end
+reports.init({
+    api = api,
+    log = log,
+    game_id = function() return state.lobbyGame end,
+    fields = function()
+        return {
+            game_version = GAME_VERSION,
+            engine_version = h7.version,
+            mods = gameplay_mods(),
+            edition = edition(),
+            content_fingerprint = state.content and state.content.fingerprint or nil,
+        }
+    end,
+})
+
 function on_unload()
+    reports.shutdown()
     stop_hosting("mod unloaded")
     browser.close()
 end

@@ -102,9 +102,11 @@ tactics phase, sim turns), and log tick gaps (real-time frame delta > 1 s) next 
    the first UAC where they differ, with a full state dump from both sides.
 4. A small script (in `tools/`) that merges the two peers' logs and prints the first divergence.
 
-**Status (2026-11-06): MPSyncDebug 0.1.0 written, Lua only** (`dist/mods/MPSyncDebug`, bundled; category
-Developer, so the lobby's compatibility check ignores it; ships off). Smoke-tested offline with stubbed `h7`, **not
-yet run in game**. What it covers, by the items above:
+**Status (2026-11-09): the tracer is `dist/lib/mpsync.lua`** (shared, bundled), used by MPSyncDebug 0.2.0 (writes
+it to a file; bundled, category Developer so the lobby's compatibility check ignores it, ships off) and by
+OnlineLobby 0.3.0's opt-in desync reports ([ONLINE.md "Desync reports"](ONLINE.md#desync-reports)). Smoke-tested
+offline with a stubbed `h7` (both mods tracing at once, a report accepted by a local lobby and diffed), **not yet
+run in game**. What it covers, by the items above:
 
 - 1: done without the caller: every `GetRandomFloat` / `GetRandomInt` / `GetRandomIntRange` draw with the counter, the
   pool refills and `SetCounter`. Hooks can't see the calling function yet; the lines around a draw (which command
@@ -118,15 +120,16 @@ yet run in game**. What it covers, by the items above:
   counter step, and the first differing snapshot line by line.
 
 For the alt-tab case (section 4) it also logs the command flow around the UAC: `SEND`/`ISEND` (stamped UAC),
-`RELAY` on the host, `RECV`/`IRECV` with `LATE` when the stamp is already behind this PC's counter (the command will
-be dropped), `DROP?` from `UnqueuePreparedCommands`, `STUCK`/`WAIT` from a 2 s watchdog over the MP queues, `GAP`
+`RELAY` on the host, `RECV`/`IRECV`, or `LATE`/`ILATE` when the stamp is already behind this PC's counter (the
+command will be dropped), `DROP?` from `UnqueuePreparedCommands`, `STUCK`/`WAIT` from a 2 s watchdog over the MP queues, `GAP`
 when no frame ran for 0.5 s or more (the background freeze shows up when the window comes back) and `BURST` (three or more
 commands in one frame). The game's own OOS check and repair are logged too (`CHECK`, `RCHECK`, `OOS`, `SYNCH*`).
 
 **Test run:** both players turn MPSyncDebug on in the Mods menu, play a LAN or lobby game, and the host alt-tabs
 for 20 to 30 s in each situation: during their own adventure turn, during the client's turn, in combat, during
 tactics and with sim turns. Each player sends their newest `H7ModEngine\logs\mpsync-*.log` (one per game session),
-and the diff script compares the two logs.
+and the diff script compares the two logs. Players who only turned on OnlineLobby's "Send desync reports" need to
+do nothing: `tools/fetch_reports.py --diff` collects and compares their reports.
 
 ### Phase B: fix the causes (`MPSyncFix` mod)
 

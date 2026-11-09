@@ -1,6 +1,6 @@
 return {
     name = "MPSyncDebug",
-    version = "0.1.0",
+    version = "0.2.0",
     author = "H7ModEngine",
     description = "Developer tool for multiplayer desyncs: while a multiplayer game runs, writes every command, "
         .. "action counter step, synced random number and out-of-sync check to logs\\mpsync-<host|client>-<time>.log, "

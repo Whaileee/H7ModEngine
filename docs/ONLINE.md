@@ -193,6 +193,24 @@ Client side, independent of the lobby:
 - Windows Firewall may ask the host once whether the game may accept connections (the responder listens on every
   interface); declining blocks the challenge.
 
+## Desync reports
+
+Opt-in (OnlineLobby setting "Send desync reports", **off by default**; `dist/mods/OnlineLobby/reports.lua`). While
+it is on and a multiplayer game runs, OnlineLobby runs the same lockstep tracer as MPSyncDebug
+(`dist/lib/mpsync.lua`, see [DESYNC.md](DESYNC.md)) but keeps only the last 800 lines in memory: nothing goes to disk.
+
+- **Triggers:** the game's own out-of-sync detection (`OOS`, or `OOSREMOTE` when the other player detected it) and
+  commands the game will lose (`LATE`/`ILATE`: arrived with a counter already behind ours; `DROP?`, `STUCK`).
+  The report goes 5 s after the first trigger (later triggers join it), so it includes the aftermath; at most 3
+  per game, 60 s apart.
+- **Contents:** the newest trace lines up to 96 KB, a state snapshot taken when sending, and `session` (random per
+  game), the lobby game id (hosted or joined; empty on LAN), role, player slot, map, sim turns, game and engine
+  versions, gameplay mods, edition and content fingerprint. No player or profile names, no addresses, no saves.
+- **Lobby:** `POST /v1/reports` (H7Lobby README "Desync reports"): its own Durable Object, no IP stored, 30 days.
+- **Reading them:** `tools/fetch_reports.py --diff` (admin token in `H7LOBBY_ADMIN_TOKEN`) saves each report as an
+  MPSyncDebug-format log under `reports/<game id>/` and runs `tools/mpsync_diff.py` on every game whose host and
+  client both reported.
+
 ## Phases
 
 1. **In-game checks (no server):** host a LAN game, dump `GameInterface` session data to confirm the `FSessionInfo`
